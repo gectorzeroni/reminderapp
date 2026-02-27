@@ -18,7 +18,9 @@ export async function getSupabaseServerAuthClient() {
       getAll() {
         return cookieStore.getAll();
       },
-      setAll(cookieList) {
+      setAll(
+        cookieList: Array<{ name: string; value: string; options?: Parameters<typeof cookieStore.set>[2] }>
+      ) {
         for (const cookie of cookieList) {
           try {
             cookieStore.set(cookie.name, cookie.value, cookie.options);

@@ -587,17 +587,15 @@ async function getArchivedRemindersSupabase(userId: string, query: ArchiveQuery)
     .from("reminders")
     .select("*, reminder_attachments(*)")
     .eq("user_id", userId)
-    .eq("status", "archived")
-    .order("archived_at", { ascending: false })
-    .returns<DbReminderRow[]>();
+    .eq("status", "archived");
 
   if (query.filter === "completed") q = q.eq("archive_reason", "completed");
   if (query.filter === "auto") q = q.eq("archive_reason", "auto");
 
-  const { data, error } = await q;
+  const { data, error } = await q.order("archived_at", { ascending: false });
   if (error) throw new Error(error.message);
 
-  let reminders = await maybeAttachSignedPreviewUrls((data ?? []).map(mapReminderRow));
+  let reminders = await maybeAttachSignedPreviewUrls(((data as DbReminderRow[] | null) ?? []).map(mapReminderRow));
   reminders = reminders.filter((r) => matchesArchiveSearch(r, query.q));
   const start = (page - 1) * pageSize;
   return { items: reminders.slice(start, start + pageSize), total: reminders.length, page, pageSize };
