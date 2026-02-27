@@ -82,6 +82,7 @@ export function ReminderComposer({ onCreate }: Props) {
   const capacityRemaining = MAX_ATTACHMENTS - attachments.length;
   const scheduleParts = useMemo(() => splitLocalDatetime(remindAt), [remindAt]);
   const tags = useMemo(() => extractTagsFromText(note), [note]);
+  const scheduleLabel = useMemo(() => formatSchedulePill(remindAt), [remindAt]);
 
   async function addFiles(files: FileList | File[]) {
     const list = Array.from(files).slice(0, capacityRemaining);
@@ -348,77 +349,90 @@ export function ReminderComposer({ onCreate }: Props) {
           </motion.button>
 
           <div className="composer-toolbar__right">
-          <Popover open={scheduleOpen} onOpenChange={setScheduleOpen}>
-            <PopoverTrigger asChild>
-              <motion.button
-                type="button"
-                className="btn composer-calendar-btn"
-                whileHover={{ scale: 1.04 }}
-                whileTap={{ scale: 0.96 }}
-                aria-label="Set reminder date and time"
-                title="Set date and time"
-              >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                  <path
-                    d="M7 3v3M17 3v3M4 9h16M6 5h12a2 2 0 0 1 2 2v11a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V7a2 2 0 0 1 2-2Z"
-                    stroke="currentColor"
-                    strokeWidth="1.7"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              </motion.button>
-            </PopoverTrigger>
-            <PopoverContent side="top" align="end" sideOffset={10} className="schedule-popover">
-              <div className="schedule-popover__header">
-                <strong>Reminder time</strong>
-                <button type="button" className="btn subtle" onClick={() => setRemindAt("")}>
-                  Clear
-                </button>
-              </div>
-              <div className="schedule-popover__grid">
-                <label className="schedule-field schedule-field--date">
-                  <span>Date</span>
-                  <input type="date" value={scheduleParts.date} onChange={(e) => setDatePart(e.target.value)} />
-                </label>
-                <div className="schedule-popover__side">
-                  <label className="schedule-field">
-                    <span>Time</span>
-                    <input
-                      type="time"
-                      value={scheduleParts.time}
-                      onChange={(e) => setTimePart(e.target.value)}
-                      disabled={!scheduleParts.date}
+            <Popover open={scheduleOpen} onOpenChange={setScheduleOpen}>
+              <PopoverTrigger asChild>
+                <motion.button
+                  type="button"
+                  className="btn composer-calendar-btn"
+                  whileHover={{ scale: 1.04 }}
+                  whileTap={{ scale: 0.96 }}
+                  aria-label="Set reminder date and time"
+                  title="Set date and time"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path
+                      d="M7 3v3M17 3v3M4 9h16M6 5h12a2 2 0 0 1 2 2v11a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V7a2 2 0 0 1 2-2Z"
+                      stroke="currentColor"
+                      strokeWidth="1.7"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
                     />
-                  </label>
-                  {formatSchedulePill(remindAt) ? (
-                    <p className="schedule-summary">{formatSchedulePill(remindAt)}</p>
-                  ) : null}
+                  </svg>
+                </motion.button>
+              </PopoverTrigger>
+              <PopoverContent side="top" align="end" sideOffset={10} className="schedule-popover">
+                <div className="schedule-popover__header">
+                  <strong>Reminder time</strong>
+                  <button type="button" className="btn subtle" onClick={() => setRemindAt("")}>
+                    Clear
+                  </button>
                 </div>
-              </div>
-              <div className="quick-presets quick-presets--in-popover" aria-label="Quick reminder presets">
-                <button type="button" className="btn subtle" onClick={() => setQuickPreset("1h")}>
-                  In 1 hour
-                </button>
-                <button type="button" className="btn subtle" onClick={() => setQuickPreset("tomorrow")}>
-                  Tomorrow morning
-                </button>
-                <button type="button" className="btn subtle" onClick={() => setQuickPreset("1w")}>
-                  In a week
-                </button>
-              </div>
-            </PopoverContent>
-          </Popover>
+                <div className="schedule-popover__grid">
+                  <label className="schedule-field schedule-field--date">
+                    <span>Date</span>
+                    <input type="date" value={scheduleParts.date} onChange={(e) => setDatePart(e.target.value)} />
+                  </label>
+                  <div className="schedule-popover__side">
+                    <label className="schedule-field">
+                      <span>Time</span>
+                      <input
+                        type="time"
+                        value={scheduleParts.time}
+                        onChange={(e) => setTimePart(e.target.value)}
+                        disabled={!scheduleParts.date}
+                      />
+                    </label>
+                    {scheduleLabel ? <p className="schedule-summary">{scheduleLabel}</p> : null}
+                  </div>
+                </div>
+                <div className="quick-presets quick-presets--in-popover" aria-label="Quick reminder presets">
+                  <button type="button" className="btn subtle" onClick={() => setQuickPreset("1h")}>
+                    In 1 hour
+                  </button>
+                  <button type="button" className="btn subtle" onClick={() => setQuickPreset("tomorrow")}>
+                    Tomorrow morning
+                  </button>
+                  <button type="button" className="btn subtle" onClick={() => setQuickPreset("1w")}>
+                    In a week
+                  </button>
+                </div>
+              </PopoverContent>
+            </Popover>
 
-          <motion.button
-            type="submit"
-            className="btn primary composer-save-btn"
-            disabled={submitting}
-            whileHover={submitting ? undefined : { scale: 1.04 }}
-            whileTap={submitting ? undefined : { scale: 0.96 }}
-          >
-            {submitting ? "Saving..." : "Save reminder"}
-          </motion.button>
+            {scheduleLabel ? (
+              <span className="composer-schedule-chip" aria-label={`Reminder set for ${scheduleLabel}`}>
+                <span>{scheduleLabel}</span>
+                <button
+                  type="button"
+                  className="composer-schedule-chip__clear"
+                  onClick={() => setRemindAt("")}
+                  aria-label="Clear reminder date and time"
+                  title="Clear reminder date and time"
+                >
+                  ×
+                </button>
+              </span>
+            ) : null}
+
+            <motion.button
+              type="submit"
+              className="btn primary composer-save-btn"
+              disabled={submitting}
+              whileHover={submitting ? undefined : { scale: 1.04 }}
+              whileTap={submitting ? undefined : { scale: 0.96 }}
+            >
+              {submitting ? "Saving..." : "Save reminder"}
+            </motion.button>
           </div>
         </div>
 

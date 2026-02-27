@@ -386,6 +386,10 @@ select {
   margin: 0 0 2px;
 }
 
+.reminder-card.has-leading-check .tag-chip-list {
+  margin-left: 36px;
+}
+
 .tag-chip {
   display: inline-flex;
   align-items: center;
@@ -1044,6 +1048,38 @@ select {
   gap: 8px;
 }
 
+.composer-schedule-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  border: 1px dashed rgba(36, 34, 28, 0.24);
+  border-radius: 999px;
+  padding: 6px 10px;
+  background: #fff;
+  color: var(--muted);
+  font-size: 0.83rem;
+  line-height: 1;
+}
+
+.composer-schedule-chip__clear {
+  width: 18px;
+  height: 18px;
+  border: 0;
+  border-radius: 999px;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  display: inline-grid;
+  place-items: center;
+  line-height: 1;
+}
+
+.composer-schedule-chip__clear:hover {
+  background: rgba(17, 24, 39, 0.08);
+}
+
 .quick-presets {
   display: flex;
   flex-wrap: wrap;
@@ -1102,6 +1138,10 @@ select {
 
 .schedule-popover__header .btn {
   padding: 6px 10px;
+}
+
+.schedule-popover .btn.subtle {
+  background: #fff;
 }
 
 .schedule-popover__grid {
