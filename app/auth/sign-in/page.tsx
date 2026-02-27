@@ -14,12 +14,20 @@ export default function SignInPage() {
           boxShadow: "0 12px 36px rgba(0,0,0,0.08)"
         }}
       >
-        <p style={{ margin: 0, color: "#666", textTransform: "uppercase", letterSpacing: "0.08em", fontSize: 12 }}>
-          Smart Reminders
+        <p
+          style={{
+            margin: 0,
+            fontFamily: "var(--font-display), var(--font-inter), Segoe UI, sans-serif",
+            fontSize: 28,
+            lineHeight: 1
+          }}
+        >
+          Later™
         </p>
         <h1 style={{ marginTop: 6, marginBottom: 8 }}>Sign in</h1>
         <p style={{ color: "#666", marginTop: 0 }}>
-          Email magic link (OTP). After sign-in, the app will use your Supabase user ID automatically.
+          Enter your email and we&apos;ll send you a secure magic link. Open it on this device to sign in or create your
+          account automatically.
         </p>
         <Suspense fallback={<p>Loading sign-in…</p>}>
           <SignInClient />
