@@ -42,6 +42,14 @@ a {
   text-decoration: none;
 }
 
+.sign-in-support-link {
+  transition: color 140ms ease;
+}
+
+.sign-in-support-link:hover {
+  color: #0f67ff;
+}
+
 button,
 input,
 textarea,
@@ -123,7 +131,7 @@ select {
 }
 
 .top-bar__search {
-  width: 180px;
+  width: 250px;
   height: 40px;
   min-height: 40px;
   border: 1px solid var(--stroke);
@@ -464,7 +472,7 @@ select {
 }
 
 .attachment-chip img.thumb {
-  border-radius: 6px;
+  border-radius: 5px;
   object-fit: cover;
 }
 
@@ -496,7 +504,7 @@ select {
 .reminder-attachment__icon {
   width: 44px;
   height: 44px;
-  border-radius: 14px;
+  border-radius: 10px;
   display: grid;
   place-items: center;
   background: rgba(17, 24, 39, 0.04);
@@ -529,7 +537,7 @@ select {
 .attachment-chip img.reminder-attachment__image {
   width: 58px;
   height: 58px;
-  border-radius: 14px;
+  border-radius: 10px;
   object-fit: cover;
 }
 
@@ -549,7 +557,7 @@ select {
 .image-attachment-tile {
   width: 84px;
   height: 84px;
-  border-radius: 10px;
+  border-radius: 8px;
   border: 1px solid rgba(36, 34, 28, 0.12);
   background: var(--bg);
   overflow: hidden;
@@ -899,7 +907,7 @@ select {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  padding: 14px 14px 8px;
+  padding: 20px 20px 12px;
 }
 
 .archive-panel__header h2 {
@@ -910,7 +918,7 @@ select {
   display: grid;
   grid-template-columns: auto 1fr;
   gap: 8px;
-  padding: 0 14px 10px;
+  padding: 0 20px 14px;
 }
 
 .archive-toolbar input,
@@ -923,7 +931,7 @@ select {
 }
 
 .archive-list {
-  padding: 0 14px 14px;
+  padding: 0 20px 20px;
   overflow: auto;
   align-content: start;
 }

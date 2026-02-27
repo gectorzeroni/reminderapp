@@ -46,6 +46,7 @@ export default function SignInPage() {
       >
         <a
           href="mailto:duhnov.vladislav@gmail.com"
+          className="sign-in-support-link"
           style={{ color: "inherit", textDecoration: "none" }}
         >
           support:duhnov.vladislav@gmail.com
