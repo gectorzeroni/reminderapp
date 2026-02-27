@@ -22,6 +22,9 @@ export function fromError(error: unknown) {
     return badRequest("Validation failed", error.flatten());
   }
   if (error instanceof Error) {
+    if (error.message === "Unauthorized") {
+      return unauthorized();
+    }
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
   return NextResponse.json({ error: "Unknown error" }, { status: 500 });
