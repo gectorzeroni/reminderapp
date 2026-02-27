@@ -44,7 +44,12 @@ export default function SignInPage() {
           color: "rgba(32,31,26,0.5)"
         }}
       >
-        support:duhnov.vladislav@gmail.com
+        <a
+          href="mailto:duhnov.vladislav@gmail.com"
+          style={{ color: "inherit", textDecoration: "none" }}
+        >
+          support:duhnov.vladislav@gmail.com
+        </a>
       </p>
     </main>
   );

@@ -1,5 +1,6 @@
 "use client";
 
+import * as motion from "motion/react-client";
 import { useSearchParams } from "next/navigation";
 import { FormEvent, useState } from "react";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
@@ -65,9 +66,11 @@ export function SignInClient() {
             }}
           />
         </label>
-        <button
+        <motion.button
           type="submit"
           disabled={submitting}
+          whileHover={submitting ? undefined : { scale: 1.04 }}
+          whileTap={submitting ? undefined : { scale: 0.96 }}
           style={{
             minHeight: 42,
             borderRadius: 999,
@@ -78,7 +81,7 @@ export function SignInClient() {
           }}
         >
           {submitting ? "Sending..." : "Send magic link"}
-        </button>
+        </motion.button>
       </form>
 
       {status ? <p style={{ color: "#11773a", margin: 0 }}>{status}</p> : null}
