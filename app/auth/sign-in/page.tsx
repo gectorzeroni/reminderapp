@@ -25,6 +25,19 @@ export default function SignInPage() {
           <SignInClient />
         </Suspense>
       </section>
+      <p
+        style={{
+          position: "fixed",
+          left: "50%",
+          bottom: 16,
+          transform: "translateX(-50%)",
+          margin: 0,
+          fontSize: 12,
+          color: "rgba(32,31,26,0.5)"
+        }}
+      >
+        support:duhnov.vladislav@gmail.com
+      </p>
     </main>
   );
 }

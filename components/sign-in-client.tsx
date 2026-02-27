@@ -1,7 +1,6 @@
 "use client";
 
-import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { FormEvent, useState } from "react";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 
@@ -10,7 +9,6 @@ export function SignInClient() {
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const router = useRouter();
   const params = useSearchParams();
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -41,22 +39,6 @@ export function SignInClient() {
     } finally {
       setSubmitting(false);
     }
-  }
-
-  async function handleSignOut() {
-    setError(null);
-    const supabase = getSupabaseBrowserClient();
-    if (!supabase) {
-      setError("Supabase is not configured.");
-      return;
-    }
-    const { error: signOutError } = await supabase.auth.signOut();
-    if (signOutError) {
-      setError(signOutError.message);
-      return;
-    }
-    setStatus("Signed out.");
-    router.refresh();
   }
 
   return (
@@ -98,25 +80,6 @@ export function SignInClient() {
           {submitting ? "Sending..." : "Send magic link"}
         </button>
       </form>
-
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        <Link href="/" style={{ color: "#0b5cff" }}>
-          Open app
-        </Link>
-        <button
-          type="button"
-          onClick={handleSignOut}
-          style={{
-            border: "1px solid rgba(0,0,0,0.12)",
-            borderRadius: 999,
-            background: "#fff",
-            padding: "6px 10px",
-            cursor: "pointer"
-          }}
-        >
-          Sign out
-        </button>
-      </div>
 
       {status ? <p style={{ color: "#11773a", margin: 0 }}>{status}</p> : null}
       {error ? <p style={{ color: "#b73333", margin: 0 }}>{error}</p> : null}
