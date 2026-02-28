@@ -1,5 +1,6 @@
 "use client";
 
+import * as motion from "motion/react-client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Dialog, DialogPanel } from "@/components/animate-ui/components/headless/dialog";
 import { Checkbox } from "@/components/animate-ui/components/radix/checkbox";
@@ -53,6 +54,36 @@ function htmlToPlainText(html: string): string {
     .replace(/<[^>]*>/g, "")
     .replace(/\u00a0/g, " ")
     .trim();
+}
+
+function getYouTubeVideoId(urlString: string | null | undefined): string | null {
+  if (!urlString) return null;
+  try {
+    const url = new URL(urlString);
+    const host = url.hostname.replace(/^www\./, "").toLowerCase();
+    if (host === "youtu.be") {
+      const id = url.pathname.split("/").filter(Boolean)[0];
+      return id || null;
+    }
+    if (host === "youtube.com" || host === "m.youtube.com" || host === "music.youtube.com") {
+      if (url.pathname === "/watch") {
+        return url.searchParams.get("v");
+      }
+      if (url.pathname.startsWith("/shorts/") || url.pathname.startsWith("/embed/")) {
+        const id = url.pathname.split("/").filter(Boolean)[1];
+        return id || null;
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function getYouTubePreviewUrl(urlString: string | null | undefined): string | null {
+  const videoId = getYouTubeVideoId(urlString);
+  if (!videoId) return null;
+  return `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
 }
 
 export function ReminderCard({
@@ -116,7 +147,7 @@ export function ReminderCard({
     setEditorOpen(true);
   }
 
-  function applyFormatting(command: "bold" | "italic" | "underline") {
+  function applyFormatting(command: "bold" | "italic" | "underline" | "strikeThrough") {
     const editor = editorRef.current;
     if (!editor) return;
     const selection = window.getSelection();
@@ -364,6 +395,14 @@ export function ReminderCard({
                     <div className="reminder-attachment__body">
                       <span>{attachment.previewTitle || attachment.url || "Link"}</span>
                       {attachment.url ? <small>{attachment.url}</small> : null}
+                      {getYouTubePreviewUrl(attachment.url) ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={getYouTubePreviewUrl(attachment.url) ?? ""}
+                          alt="YouTube video preview"
+                          className="reminder-attachment__preview"
+                        />
+                      ) : null}
                     </div>
                   </>
                 ) : attachment.kind === "file" ? (
@@ -441,9 +480,16 @@ export function ReminderCard({
       <Dialog open={editorOpen} onClose={setEditorOpen} className="note-editor-dialog">
         <DialogPanel className="note-editor-panel p-0" showCloseButton={false}>
           <div className="note-editor__header">
-            <button type="button" className="icon-btn" onClick={() => setEditorOpen(false)} aria-label="Close edit note">
+            <motion.button
+              type="button"
+              className="icon-btn"
+              whileHover={{ scale: 1.04 }}
+              whileTap={{ scale: 0.96 }}
+              onClick={() => setEditorOpen(false)}
+              aria-label="Close edit note"
+            >
               ×
-            </button>
+            </motion.button>
           </div>
           <div className="note-editor__body">
             <input
@@ -495,6 +541,14 @@ export function ReminderCard({
                 >
                   <u>U</u>
                 </button>
+                <button
+                  type="button"
+                  className="text-format-popover__item"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => applyFormatting("strikeThrough")}
+                >
+                  <s>S</s>
+                </button>
               </div>
             ) : null}
 
@@ -544,6 +598,14 @@ export function ReminderCard({
                             <div className="reminder-attachment__body">
                               <span>{attachment.previewTitle || attachment.url || "Link"}</span>
                               {attachment.url ? <small>{attachment.url}</small> : null}
+                              {getYouTubePreviewUrl(attachment.url) ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                  src={getYouTubePreviewUrl(attachment.url) ?? ""}
+                                  alt="YouTube video preview"
+                                  className="reminder-attachment__preview"
+                                />
+                              ) : null}
                             </div>
                           </>
                         ) : attachment.kind === "file" ? (
@@ -629,12 +691,25 @@ export function ReminderCard({
             ) : null}
           </div>
           <div className="note-editor__footer">
-            <button type="button" className="btn" onClick={() => setEditorOpen(false)}>
+            <motion.button
+              type="button"
+              className="btn"
+              whileHover={{ scale: 1.04 }}
+              whileTap={{ scale: 0.96 }}
+              onClick={() => setEditorOpen(false)}
+            >
               Cancel
-            </button>
-            <button type="button" className="btn primary" onClick={() => void saveEditor()} disabled={saving}>
+            </motion.button>
+            <motion.button
+              type="button"
+              className="btn primary"
+              whileHover={saving ? undefined : { scale: 1.04 }}
+              whileTap={saving ? undefined : { scale: 0.96 }}
+              onClick={() => void saveEditor()}
+              disabled={saving}
+            >
               {saving ? "Saving..." : "Save"}
-            </button>
+            </motion.button>
           </div>
         </DialogPanel>
       </Dialog>

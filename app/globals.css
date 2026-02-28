@@ -327,7 +327,7 @@ select {
 
 .reminder-card__header h3 {
   margin: 0;
-  font-size: 1.05rem;
+  font-size: 1.2rem;
 }
 
 .reminder-card__header {
@@ -557,6 +557,15 @@ select {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.reminder-attachment__preview {
+  width: min(100%, 300px);
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: 8px;
+  margin-top: 6px;
+  border: 1px solid rgba(36, 34, 28, 0.12);
 }
 
 .attachment-chip img.reminder-attachment__image {
@@ -1195,7 +1204,7 @@ select {
 }
 
 .note-editor-panel {
-  width: min(860px, calc(100vw - 24px));
+  width: min(980px, calc(100vw - 24px));
   max-height: min(78vh, 680px);
   background: #fafafa;
   border: 1px solid var(--stroke);
@@ -1217,13 +1226,13 @@ select {
   display: flex;
   justify-content: flex-end;
   align-items: center;
-  padding: 10px 10px 0;
+  padding: 6px 10px 0;
 }
 
 .note-editor__body {
-  padding: 12px 14px;
+  padding: 8px 14px 12px;
   display: grid;
-  gap: 10px;
+  gap: 0;
   overflow: auto;
 }
 
@@ -1236,6 +1245,7 @@ select {
   font-weight: 600;
   font-size: 1.06rem;
   outline: none;
+  margin: 0 0 20px;
 }
 
 .note-editor__content {

@@ -228,7 +228,7 @@ export function ReminderComposer({ onCreate }: Props) {
     event.currentTarget.closest("form")?.requestSubmit();
   }
 
-  function applyFormatting(command: "bold" | "italic" | "underline") {
+  function applyFormatting(command: "bold" | "italic" | "underline" | "strikeThrough") {
     const editor = bodyEditorRef.current;
     if (!editor) return;
     const selection = window.getSelection();
@@ -422,6 +422,14 @@ export function ReminderComposer({ onCreate }: Props) {
               onClick={() => applyFormatting("underline")}
             >
               <u>U</u>
+            </button>
+            <button
+              type="button"
+              className="text-format-popover__item"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => applyFormatting("strikeThrough")}
+            >
+              <s>S</s>
             </button>
           </div>
         ) : null}
