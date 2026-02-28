@@ -1007,7 +1007,7 @@ select {
 }
 
 .composer-shell {
-  width: min(700px, 100%);
+  width: min(760px, 100%);
   display: grid;
   gap: 8px;
 }
@@ -1017,9 +1017,9 @@ select {
   border: 1px solid var(--stroke);
   box-shadow: var(--shadow);
   border-radius: 22px;
-  padding: 12px;
+  padding: 10px 12px;
   display: grid;
-  gap: 10px;
+  gap: 8px;
   position: relative;
 }
 
@@ -1036,8 +1036,8 @@ select {
 .composer-title-input {
   width: 100%;
   border: 0;
-  min-height: 40px;
-  padding: 2px 4px;
+  min-height: 34px;
+  padding: 1px 4px;
   font-weight: 600;
   font-size: 1.02rem;
   background: transparent;
@@ -1046,8 +1046,8 @@ select {
 
 .composer-body-input {
   border: 0;
-  min-height: 88px;
-  padding: 2px 4px;
+  min-height: 62px;
+  padding: 1px 4px;
   background: transparent;
   outline: none;
 }
