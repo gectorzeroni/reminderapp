@@ -301,7 +301,7 @@ select {
   backdrop-filter: none;
   padding: 20px 16px;
   display: grid;
-  gap: 12px;
+  gap: 8px;
   transition:
     opacity 220ms ease,
     transform 220ms ease,
@@ -352,7 +352,7 @@ select {
 
 .reminder-card__header-text {
   display: grid;
-  gap: 2px;
+  gap: 1px;
 }
 
 .reminder-card__header-main h3 {
@@ -376,6 +376,10 @@ select {
 .reminder-card__note {
   margin: 0;
   color: #2c2a22;
+}
+
+.reminder-card.has-leading-check .reminder-card__note {
+  margin-left: 36px;
 }
 
 .rich-text {
@@ -1003,7 +1007,7 @@ select {
 }
 
 .composer-shell {
-  width: min(760px, 100%);
+  width: min(700px, 100%);
   display: grid;
   gap: 8px;
 }
@@ -1191,7 +1195,7 @@ select {
 }
 
 .note-editor-panel {
-  width: min(680px, calc(100vw - 24px));
+  width: min(860px, calc(100vw - 24px));
   max-height: min(78vh, 680px);
   background: #fafafa;
   border: 1px solid var(--stroke);
@@ -1211,10 +1215,9 @@ select {
 
 .note-editor__header {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   align-items: center;
-  padding: 14px 14px 10px;
-  border-bottom: 1px solid var(--stroke);
+  padding: 10px 10px 0;
 }
 
 .note-editor__body {
@@ -1249,7 +1252,6 @@ select {
 }
 
 .note-editor__footer {
-  border-top: 1px solid var(--stroke);
   padding: 10px 14px 14px;
   display: flex;
   justify-content: flex-end;
@@ -1257,12 +1259,44 @@ select {
 }
 
 .note-editor__attachments {
-  list-style: none;
+  display: grid;
+  gap: 10px;
   margin: 0;
   padding: 0;
+}
+
+.note-editor__attachments .attachment-list {
+  display: grid;
+  gap: 10px;
+}
+
+.note-editor__attachments .reminder-attachment {
+  width: 100%;
+  grid-template-columns: auto 1fr auto;
+}
+
+.note-editor-attachment__remove {
+  flex-shrink: 0;
+}
+
+.note-editor__attachments .image-attachment-row {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.note-editor__attachments .image-attachment-tile {
+  position: relative;
+}
+
+.note-editor-image__remove {
+  position: absolute;
+  right: 6px;
+  top: 6px;
+  width: 22px;
+  height: 22px;
+  min-height: 22px;
+  background: rgba(255, 255, 255, 0.9);
 }
 
 .text-format-popover {

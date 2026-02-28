@@ -292,11 +292,11 @@ export function RemindersApp() {
     setArchive((prev) => prev.filter((r) => r.id !== id));
   }
 
-  async function updateReminderNote(id: string, note: string) {
+  async function updateReminderNote(id: string, note: string, removeAttachmentIds?: string[]) {
     const res = await fetch(`/api/reminders/${id}`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ note })
+      body: JSON.stringify({ note, removeAttachmentIds })
     });
     if (!res.ok) return;
     const body = (await res.json()) as { reminder: Reminder };

@@ -13,7 +13,7 @@ type Props = {
   onSnooze: (id: string, preset: "10m" | "1h" | "tomorrow") => void;
   onArchive: (id: string, reason: "completed" | "manual") => Promise<void> | void;
   onReschedule: (id: string, remindAt: string) => void;
-  onUpdateNote?: (id: string, note: string) => Promise<void> | void;
+  onUpdateNote?: (id: string, note: string, removeAttachmentIds?: string[]) => Promise<void> | void;
   compact?: boolean;
   onRestore?: (id: string) => void;
 };
@@ -75,6 +75,7 @@ export function ReminderCard({
   const [editorOpen, setEditorOpen] = useState(false);
   const [editorTitle, setEditorTitle] = useState(parsedNote.title || title);
   const [editorHtml, setEditorHtml] = useState(noteBodyHtml);
+  const [editorAttachments, setEditorAttachments] = useState(reminder.attachments);
   const [saving, setSaving] = useState(false);
   const [formatMenu, setFormatMenu] = useState<{ open: boolean; x: number; y: number }>({
     open: false,
@@ -82,6 +83,7 @@ export function ReminderCard({
     y: 0
   });
   const editorRef = useRef<HTMLDivElement>(null);
+  const selectionRangeRef = useRef<Range | null>(null);
   const editorTags = useMemo(
     () => extractTagsFromText([editorTitle, htmlToPlainText(editorHtml)].filter(Boolean).join("\n")),
     [editorTitle, editorHtml]
@@ -110,14 +112,23 @@ export function ReminderCard({
     if (compact || reminder.status === "archived" || !onUpdateNote) return;
     setEditorTitle(parsedNote.title || title);
     setEditorHtml(noteBodyHtml);
+    setEditorAttachments(reminder.attachments);
     setEditorOpen(true);
   }
 
   function applyFormatting(command: "bold" | "italic" | "underline") {
     const editor = editorRef.current;
     if (!editor) return;
+    const selection = window.getSelection();
     editor.focus();
+    if (selectionRangeRef.current && selection) {
+      selection.removeAllRanges();
+      selection.addRange(selectionRangeRef.current);
+    }
     document.execCommand(command);
+    if (selection?.rangeCount) {
+      selectionRangeRef.current = selection.getRangeAt(0).cloneRange();
+    }
     setEditorHtml(editor.innerHTML);
     setFormatMenu((prev) => ({ ...prev, open: false }));
   }
@@ -129,6 +140,7 @@ export function ReminderCard({
     if (!selection.toString().trim()) return;
     const range = selection.getRangeAt(0);
     if (!editor.contains(range.commonAncestorContainer)) return;
+    selectionRangeRef.current = range.cloneRange();
     setFormatMenu({ open: true, x: clientX, y: clientY });
   }
 
@@ -138,7 +150,12 @@ export function ReminderCard({
     if (!editorTitle.trim() || !plainBody.trim()) return;
     setSaving(true);
     try {
-      await Promise.resolve(onUpdateNote(reminder.id, serializeNote(editorTitle, sanitizeNoteHtml(editorHtml))));
+      const removeAttachmentIds = reminder.attachments
+        .filter((attachment) => !editorAttachments.some((current) => current.id === attachment.id))
+        .map((attachment) => attachment.id);
+      await Promise.resolve(
+        onUpdateNote(reminder.id, serializeNote(editorTitle, sanitizeNoteHtml(editorHtml)), removeAttachmentIds)
+      );
       setEditorOpen(false);
     } finally {
       setSaving(false);
@@ -146,7 +163,8 @@ export function ReminderCard({
   }
 
   useEffect(() => {
-    function closeFormatMenu() {
+    function closeFormatMenu(event: Event) {
+      if (event.target instanceof Element && event.target.closest(".text-format-popover")) return;
       setFormatMenu((prev) => (prev.open ? { ...prev, open: false } : prev));
     }
     window.addEventListener("mousedown", closeFormatMenu);
@@ -423,7 +441,6 @@ export function ReminderCard({
       <Dialog open={editorOpen} onClose={setEditorOpen} className="note-editor-dialog">
         <DialogPanel className="note-editor-panel p-0" showCloseButton={false}>
           <div className="note-editor__header">
-            <strong>Edit note</strong>
             <button type="button" className="icon-btn" onClick={() => setEditorOpen(false)} aria-label="Close edit note">
               ×
             </button>
@@ -491,39 +508,124 @@ export function ReminderCard({
               </div>
             ) : null}
 
-            {reminder.attachments.length > 0 ? (
-              <ul className="note-editor__attachments">
-                {reminder.attachments.map((attachment) => (
-                  <li key={`${reminder.id}-edit-attachment-${attachment.id}`} className="attachment-chip">
-                    {attachment.kind === "link" ? (
-                      <>
-                        <span aria-hidden="true">🔗</span>
-                        <span>{attachment.previewTitle || attachment.url || "Link"}</span>
-                      </>
-                    ) : attachment.kind === "image" ? (
-                      <>
-                        {attachment.previewImageUrl ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={attachment.previewImageUrl} alt="" width={28} height={28} className="thumb" />
+            {editorAttachments.length > 0 ? (
+              <div className="note-editor__attachments">
+                <ul className="attachment-list">
+                  {editorAttachments
+                    .filter((attachment) => attachment.kind !== "image")
+                    .map((attachment) => (
+                      <li
+                        key={`${reminder.id}-edit-attachment-${attachment.id}`}
+                        className={`attachment-chip reminder-attachment ${getAttachmentHref(attachment) ? "is-clickable" : ""}`}
+                        onClick={() => {
+                          const href = getAttachmentHref(attachment);
+                          if (href) openAttachment(href);
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key !== "Enter" && event.key !== " ") return;
+                          const href = getAttachmentHref(attachment);
+                          if (!href) return;
+                          event.preventDefault();
+                          openAttachment(href);
+                        }}
+                        role={getAttachmentHref(attachment) ? "link" : undefined}
+                        tabIndex={getAttachmentHref(attachment) ? 0 : undefined}
+                      >
+                        {attachment.kind === "link" ? (
+                          <>
+                            <div className="reminder-attachment__icon">
+                              {attachment.previewIconUrl ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img src={attachment.previewIconUrl} alt="" width={22} height={22} />
+                              ) : (
+                                <span aria-hidden="true">🔗</span>
+                              )}
+                            </div>
+                            <div className="reminder-attachment__body">
+                              <span>{attachment.previewTitle || attachment.url || "Link"}</span>
+                              {attachment.url ? <small>{attachment.url}</small> : null}
+                            </div>
+                          </>
+                        ) : attachment.kind === "file" ? (
+                          <>
+                            <div className="reminder-attachment__icon">
+                              <span aria-hidden="true">📎</span>
+                            </div>
+                            <div className="reminder-attachment__body">
+                              <span>{attachment.fileName || "File"}</span>
+                              <small>
+                                {attachment.fileSizeBytes ? summarizeFileSize(attachment.fileSizeBytes) : "Attached file"}
+                              </small>
+                            </div>
+                          </>
                         ) : (
-                          <span aria-hidden="true">🖼️</span>
+                          <>
+                            <div className="reminder-attachment__icon">
+                              <span aria-hidden="true">📝</span>
+                            </div>
+                            <div className="reminder-attachment__body">
+                              <span>{attachment.textContent?.slice(0, 120) || "Text snippet"}</span>
+                            </div>
+                          </>
                         )}
-                        <span>{attachment.fileName || "Image"}</span>
-                      </>
-                    ) : attachment.kind === "file" ? (
-                      <>
-                        <span aria-hidden="true">📎</span>
-                        <span>{attachment.fileName || "File"}</span>
-                      </>
-                    ) : (
-                      <>
-                        <span aria-hidden="true">📝</span>
-                        <span>{attachment.textContent?.slice(0, 120) || "Text snippet"}</span>
-                      </>
-                    )}
-                  </li>
-                ))}
-              </ul>
+                        <button
+                          type="button"
+                          className="icon-btn note-editor-attachment__remove"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setEditorAttachments((prev) => prev.filter((item) => item.id !== attachment.id));
+                          }}
+                          aria-label="Remove attachment"
+                        >
+                          ×
+                        </button>
+                      </li>
+                    ))}
+                </ul>
+
+                <ul className="image-attachment-row">
+                  {editorAttachments
+                    .filter((attachment) => attachment.kind === "image")
+                    .map((attachment) => {
+                      const href = getAttachmentHref(attachment);
+                      return (
+                        <li
+                          key={`${reminder.id}-edit-image-${attachment.id}`}
+                          className={`image-attachment-tile ${href ? "is-clickable" : ""}`}
+                          onClick={() => {
+                            if (href) openAttachment(href);
+                          }}
+                          onKeyDown={(event) => {
+                            if (event.key !== "Enter" && event.key !== " ") return;
+                            if (!href) return;
+                            event.preventDefault();
+                            openAttachment(href);
+                          }}
+                          role={href ? "link" : undefined}
+                          tabIndex={href ? 0 : undefined}
+                        >
+                          {attachment.previewImageUrl ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={attachment.previewImageUrl} alt="" className="image-attachment-tile__img" />
+                          ) : (
+                            <span aria-hidden="true">🖼️</span>
+                          )}
+                          <button
+                            type="button"
+                            className="icon-btn note-editor-image__remove"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setEditorAttachments((prev) => prev.filter((item) => item.id !== attachment.id));
+                            }}
+                            aria-label="Remove image attachment"
+                          >
+                            ×
+                          </button>
+                        </li>
+                      );
+                    })}
+                </ul>
+              </div>
             ) : null}
           </div>
           <div className="note-editor__footer">

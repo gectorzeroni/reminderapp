@@ -73,6 +73,7 @@ export interface CreateReminderInput {
 export interface UpdateReminderInput {
   remindAt?: string | null;
   note?: string | null;
+  removeAttachmentIds?: string[];
 }
 
 export interface ArchiveReminderInput {

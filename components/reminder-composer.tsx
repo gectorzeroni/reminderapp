@@ -94,6 +94,7 @@ export function ReminderComposer({ onCreate }: Props) {
   });
   const fileInputRef = useRef<HTMLInputElement>(null);
   const bodyEditorRef = useRef<HTMLDivElement>(null);
+  const selectionRangeRef = useRef<Range | null>(null);
 
   const scheduleParts = useMemo(() => splitLocalDatetime(remindAt), [remindAt]);
   const scheduleLabel = useMemo(() => formatSchedulePill(remindAt), [remindAt]);
@@ -230,8 +231,16 @@ export function ReminderComposer({ onCreate }: Props) {
   function applyFormatting(command: "bold" | "italic" | "underline") {
     const editor = bodyEditorRef.current;
     if (!editor) return;
+    const selection = window.getSelection();
     editor.focus();
+    if (selectionRangeRef.current && selection) {
+      selection.removeAllRanges();
+      selection.addRange(selectionRangeRef.current);
+    }
     document.execCommand(command);
+    if (selection?.rangeCount) {
+      selectionRangeRef.current = selection.getRangeAt(0).cloneRange();
+    }
     setBodyEditorHtml(editor.innerHTML);
     setFormatMenu((prev) => ({ ...prev, open: false }));
   }
@@ -243,11 +252,13 @@ export function ReminderComposer({ onCreate }: Props) {
     if (!selection.toString().trim()) return;
     const range = selection.getRangeAt(0);
     if (!editor.contains(range.commonAncestorContainer)) return;
+    selectionRangeRef.current = range.cloneRange();
     setFormatMenu({ open: true, x: clientX, y: clientY });
   }
 
   useEffect(() => {
-    function closeFormatMenu() {
+    function closeFormatMenu(event: Event) {
+      if (event.target instanceof Element && event.target.closest(".text-format-popover")) return;
       setFormatMenu((prev) => (prev.open ? { ...prev, open: false } : prev));
     }
     window.addEventListener("mousedown", closeFormatMenu);

@@ -352,6 +352,10 @@ async function updateReminderLocal(userId: string, reminderId: string, input: Up
   if (!reminder || reminder.userId !== userId) return null;
   if ("remindAt" in input) reminder.remindAt = input.remindAt ?? null;
   if ("note" in input) reminder.note = input.note?.trim() || null;
+  if (input.removeAttachmentIds?.length) {
+    const toRemove = new Set(input.removeAttachmentIds);
+    reminder.attachments = reminder.attachments.filter((attachment) => !toRemove.has(attachment.id));
+  }
   reminder.updatedAt = nowIso();
   if (reminder.status === "archived") {
     reminder.status = "upcoming";
@@ -523,23 +527,44 @@ async function getUpcomingRemindersSupabase(userId: string): Promise<Reminder[]>
 async function updateReminderSupabase(userId: string, reminderId: string, input: UpdateReminderInput): Promise<Reminder | null> {
   const supabase = getSupabaseServiceClient();
   if (!supabase) return updateReminderLocal(userId, reminderId, input);
-  const patch: Record<string, unknown> = { updated_at: nowIso() };
-  if ("remindAt" in input) patch.remind_at = input.remindAt ?? null;
-  if ("note" in input) patch.note = input.note?.trim() || null;
-  patch.status = "upcoming";
-  patch.archive_reason = null;
-  patch.archived_at = null;
-  patch.completed_at = null;
-
-  const { data, error } = await supabase
+  const { data: existing, error: existingError } = await supabase
     .from("reminders")
-    .update(patch)
+    .select("id")
     .eq("id", reminderId)
     .eq("user_id", userId)
-    .select("id")
     .maybeSingle();
-  if (error) throw new Error(error.message);
-  if (!data) return null;
+  if (existingError) throw new Error(existingError.message);
+  if (!existing) return null;
+
+  const patch: Record<string, unknown> = { updated_at: nowIso() };
+  let shouldUpdateReminder = false;
+  if ("remindAt" in input) {
+    patch.remind_at = input.remindAt ?? null;
+    patch.status = "upcoming";
+    patch.archive_reason = null;
+    patch.archived_at = null;
+    patch.completed_at = null;
+    shouldUpdateReminder = true;
+  }
+  if ("note" in input) {
+    patch.note = input.note?.trim() || null;
+    shouldUpdateReminder = true;
+  }
+
+  if (shouldUpdateReminder) {
+    const { error } = await supabase.from("reminders").update(patch).eq("id", reminderId).eq("user_id", userId);
+    if (error) throw new Error(error.message);
+  }
+
+  if (input.removeAttachmentIds?.length) {
+    const { error: deleteError } = await supabase
+      .from("reminder_attachments")
+      .delete()
+      .eq("reminder_id", reminderId)
+      .in("id", input.removeAttachmentIds);
+    if (deleteError) throw new Error(deleteError.message);
+  }
+
   return fetchReminderByIdSupabase(userId, reminderId);
 }
 
