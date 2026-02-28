@@ -1031,31 +1031,20 @@ select {
 
 .composer-title-input {
   width: 100%;
-  border: 1px solid var(--stroke);
-  border-radius: 12px;
+  border: 0;
   min-height: 40px;
-  padding: 8px 10px;
+  padding: 2px 4px;
   font-weight: 600;
-  background: #fff;
-}
-
-.composer-format-toolbar {
-  display: inline-flex;
-  gap: 6px;
-}
-
-.composer-format-toolbar .icon-btn {
-  width: 32px;
-  height: 32px;
-  font-size: 0.88rem;
+  font-size: 1.02rem;
+  background: transparent;
+  outline: none;
 }
 
 .composer-body-input {
-  border: 1px solid var(--stroke);
-  border-radius: 12px;
+  border: 0;
   min-height: 88px;
-  padding: 9px 10px;
-  background: #fff;
+  padding: 2px 4px;
+  background: transparent;
   outline: none;
 }
 
@@ -1212,6 +1201,14 @@ select {
   overflow: hidden;
 }
 
+.note-editor-dialog [data-slot="dialog-panel"].note-editor-panel {
+  top: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  left: 0 !important;
+  margin: auto !important;
+}
+
 .note-editor__header {
   display: flex;
   justify-content: space-between;
@@ -1229,31 +1226,20 @@ select {
 
 .note-editor__title {
   width: 100%;
-  border: 1px solid var(--stroke);
-  border-radius: 10px;
+  border: 0;
   min-height: 40px;
-  padding: 8px 10px;
-  background: #fff;
+  padding: 2px 4px;
+  background: transparent;
   font-weight: 600;
-}
-
-.note-editor__format {
-  display: inline-flex;
-  gap: 6px;
-}
-
-.note-editor__format .icon-btn {
-  width: 32px;
-  height: 32px;
-  font-size: 0.88rem;
+  font-size: 1.06rem;
+  outline: none;
 }
 
 .note-editor__content {
-  border: 1px solid var(--stroke);
-  border-radius: 12px;
+  border: 0;
   min-height: 220px;
-  padding: 10px;
-  background: #fff;
+  padding: 2px 4px;
+  background: transparent;
   outline: none;
 }
 
@@ -1268,6 +1254,45 @@ select {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
+}
+
+.note-editor__attachments {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.text-format-popover {
+  position: fixed;
+  transform: translate(-50%, -100%);
+  margin-top: -8px;
+  z-index: 60;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--stroke);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: var(--shadow);
+}
+
+.text-format-popover__item {
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  display: inline-grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.text-format-popover__item:hover {
+  background: rgba(17, 24, 39, 0.08);
 }
 
 .schedule-popover__grid {

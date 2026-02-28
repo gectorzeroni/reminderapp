@@ -2,7 +2,7 @@
 
 import * as motion from "motion/react-client";
 import type { ClipboardEvent, DragEvent, FormEvent, KeyboardEvent } from "react";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/animate-ui/components/radix/popover";
 import { MAX_ATTACHMENTS } from "@/lib/constants";
 import { extractTagsFromText, extractUrlsFromText, isLikelyUrl } from "@/lib/parse";
@@ -87,6 +87,11 @@ export function ReminderComposer({ onCreate }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [formatMenu, setFormatMenu] = useState<{ open: boolean; x: number; y: number }>({
+    open: false,
+    x: 0,
+    y: 0
+  });
   const fileInputRef = useRef<HTMLInputElement>(null);
   const bodyEditorRef = useRef<HTMLDivElement>(null);
 
@@ -228,7 +233,32 @@ export function ReminderComposer({ onCreate }: Props) {
     editor.focus();
     document.execCommand(command);
     setBodyEditorHtml(editor.innerHTML);
+    setFormatMenu((prev) => ({ ...prev, open: false }));
   }
+
+  function openFormatMenuFromSelection(clientX: number, clientY: number) {
+    const editor = bodyEditorRef.current;
+    const selection = window.getSelection();
+    if (!editor || !selection || selection.rangeCount === 0 || selection.isCollapsed) return;
+    if (!selection.toString().trim()) return;
+    const range = selection.getRangeAt(0);
+    if (!editor.contains(range.commonAncestorContainer)) return;
+    setFormatMenu({ open: true, x: clientX, y: clientY });
+  }
+
+  useEffect(() => {
+    function closeFormatMenu() {
+      setFormatMenu((prev) => (prev.open ? { ...prev, open: false } : prev));
+    }
+    window.addEventListener("mousedown", closeFormatMenu);
+    window.addEventListener("scroll", closeFormatMenu, true);
+    window.addEventListener("resize", closeFormatMenu);
+    return () => {
+      window.removeEventListener("mousedown", closeFormatMenu);
+      window.removeEventListener("scroll", closeFormatMenu, true);
+      window.removeEventListener("resize", closeFormatMenu);
+    };
+  }, []);
 
   async function prepareAttachments(): Promise<CreateAttachmentInput[]> {
     const prepared: CreateAttachmentInput[] = [];
@@ -337,18 +367,6 @@ export function ReminderComposer({ onCreate }: Props) {
           aria-label="Reminder title"
         />
 
-        <div className="composer-format-toolbar" aria-label="Text formatting">
-          <button type="button" className="icon-btn" onClick={() => applyFormatting("bold")} aria-label="Bold">
-            B
-          </button>
-          <button type="button" className="icon-btn" onClick={() => applyFormatting("italic")} aria-label="Italic">
-            <em>I</em>
-          </button>
-          <button type="button" className="icon-btn" onClick={() => applyFormatting("underline")} aria-label="Underline">
-            <u>U</u>
-          </button>
-        </div>
-
         <div
           ref={bodyEditorRef}
           className="composer-body-input"
@@ -360,7 +378,42 @@ export function ReminderComposer({ onCreate }: Props) {
           onInput={(e) => setBodyEditorHtml((e.target as HTMLDivElement).innerHTML)}
           onPaste={onBodyPaste}
           onKeyDown={onBodyKeyDown}
+          onContextMenu={(event) => {
+            openFormatMenuFromSelection(event.clientX, event.clientY);
+            if (window.getSelection()?.toString().trim()) {
+              event.preventDefault();
+            }
+          }}
         />
+
+        {formatMenu.open ? (
+          <div className="text-format-popover" style={{ left: formatMenu.x, top: formatMenu.y }} role="menu">
+            <button
+              type="button"
+              className="text-format-popover__item"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => applyFormatting("bold")}
+            >
+              <strong>B</strong>
+            </button>
+            <button
+              type="button"
+              className="text-format-popover__item"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => applyFormatting("italic")}
+            >
+              <em>I</em>
+            </button>
+            <button
+              type="button"
+              className="text-format-popover__item"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => applyFormatting("underline")}
+            >
+              <u>U</u>
+            </button>
+          </div>
+        ) : null}
 
         {tags.length > 0 ? (
           <div className="tag-chip-list" aria-label="Tags from note">

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Dialog, DialogPanel } from "@/components/animate-ui/components/headless/dialog";
 import { Checkbox } from "@/components/animate-ui/components/radix/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/animate-ui/components/radix/popover";
@@ -76,7 +76,16 @@ export function ReminderCard({
   const [editorTitle, setEditorTitle] = useState(parsedNote.title || title);
   const [editorHtml, setEditorHtml] = useState(noteBodyHtml);
   const [saving, setSaving] = useState(false);
+  const [formatMenu, setFormatMenu] = useState<{ open: boolean; x: number; y: number }>({
+    open: false,
+    x: 0,
+    y: 0
+  });
   const editorRef = useRef<HTMLDivElement>(null);
+  const editorTags = useMemo(
+    () => extractTagsFromText([editorTitle, htmlToPlainText(editorHtml)].filter(Boolean).join("\n")),
+    [editorTitle, editorHtml]
+  );
 
   const hasLeadingCheckbox = !compact && reminder.status !== "archived";
   const imageAttachments = reminder.attachments.filter((a) => a.kind === "image");
@@ -110,6 +119,17 @@ export function ReminderCard({
     editor.focus();
     document.execCommand(command);
     setEditorHtml(editor.innerHTML);
+    setFormatMenu((prev) => ({ ...prev, open: false }));
+  }
+
+  function openFormatMenuFromSelection(clientX: number, clientY: number) {
+    const editor = editorRef.current;
+    const selection = window.getSelection();
+    if (!editor || !selection || selection.rangeCount === 0 || selection.isCollapsed) return;
+    if (!selection.toString().trim()) return;
+    const range = selection.getRangeAt(0);
+    if (!editor.contains(range.commonAncestorContainer)) return;
+    setFormatMenu({ open: true, x: clientX, y: clientY });
   }
 
   async function saveEditor() {
@@ -124,6 +144,20 @@ export function ReminderCard({
       setSaving(false);
     }
   }
+
+  useEffect(() => {
+    function closeFormatMenu() {
+      setFormatMenu((prev) => (prev.open ? { ...prev, open: false } : prev));
+    }
+    window.addEventListener("mousedown", closeFormatMenu);
+    window.addEventListener("scroll", closeFormatMenu, true);
+    window.addEventListener("resize", closeFormatMenu);
+    return () => {
+      window.removeEventListener("mousedown", closeFormatMenu);
+      window.removeEventListener("scroll", closeFormatMenu, true);
+      window.removeEventListener("resize", closeFormatMenu);
+    };
+  }, []);
 
   async function handleComplete() {
     if (isCompleting) return;
@@ -402,17 +436,6 @@ export function ReminderCard({
               placeholder="Title"
               maxLength={180}
             />
-            <div className="note-editor__format">
-              <button type="button" className="icon-btn" onClick={() => applyFormatting("bold")} aria-label="Bold">
-                B
-              </button>
-              <button type="button" className="icon-btn" onClick={() => applyFormatting("italic")} aria-label="Italic">
-                <em>I</em>
-              </button>
-              <button type="button" className="icon-btn" onClick={() => applyFormatting("underline")} aria-label="Underline">
-                <u>U</u>
-              </button>
-            </div>
             <div
               ref={editorRef}
               className="note-editor__content rich-text"
@@ -421,8 +444,87 @@ export function ReminderCard({
               role="textbox"
               data-placeholder="Write details..."
               onInput={(e) => setEditorHtml((e.target as HTMLDivElement).innerHTML)}
+              onContextMenu={(event) => {
+                openFormatMenuFromSelection(event.clientX, event.clientY);
+                if (window.getSelection()?.toString().trim()) {
+                  event.preventDefault();
+                }
+              }}
               dangerouslySetInnerHTML={{ __html: editorHtml || textToHtml("") }}
             />
+            {formatMenu.open ? (
+              <div className="text-format-popover" style={{ left: formatMenu.x, top: formatMenu.y }} role="menu">
+                <button
+                  type="button"
+                  className="text-format-popover__item"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => applyFormatting("bold")}
+                >
+                  <strong>B</strong>
+                </button>
+                <button
+                  type="button"
+                  className="text-format-popover__item"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => applyFormatting("italic")}
+                >
+                  <em>I</em>
+                </button>
+                <button
+                  type="button"
+                  className="text-format-popover__item"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => applyFormatting("underline")}
+                >
+                  <u>U</u>
+                </button>
+              </div>
+            ) : null}
+
+            {editorTags.length > 0 ? (
+              <div className="tag-chip-list" aria-label="Note tags">
+                {editorTags.map((tag) => (
+                  <span key={`${reminder.id}-edit-${tag}`} className="tag-chip">
+                    #{tag}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+
+            {reminder.attachments.length > 0 ? (
+              <ul className="note-editor__attachments">
+                {reminder.attachments.map((attachment) => (
+                  <li key={`${reminder.id}-edit-attachment-${attachment.id}`} className="attachment-chip">
+                    {attachment.kind === "link" ? (
+                      <>
+                        <span aria-hidden="true">🔗</span>
+                        <span>{attachment.previewTitle || attachment.url || "Link"}</span>
+                      </>
+                    ) : attachment.kind === "image" ? (
+                      <>
+                        {attachment.previewImageUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={attachment.previewImageUrl} alt="" width={28} height={28} className="thumb" />
+                        ) : (
+                          <span aria-hidden="true">🖼️</span>
+                        )}
+                        <span>{attachment.fileName || "Image"}</span>
+                      </>
+                    ) : attachment.kind === "file" ? (
+                      <>
+                        <span aria-hidden="true">📎</span>
+                        <span>{attachment.fileName || "File"}</span>
+                      </>
+                    ) : (
+                      <>
+                        <span aria-hidden="true">📝</span>
+                        <span>{attachment.textContent?.slice(0, 120) || "Text snippet"}</span>
+                      </>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
           </div>
           <div className="note-editor__footer">
             <button type="button" className="btn" onClick={() => setEditorOpen(false)}>
@@ -437,4 +539,3 @@ export function ReminderCard({
     </>
   );
 }
-
