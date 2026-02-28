@@ -81,7 +81,8 @@ export const createReminderSchema = z
   });
 
 export const updateReminderSchema = z.object({
-  remindAt: z.string().datetime().nullable().optional()
+  remindAt: z.string().datetime().nullable().optional(),
+  note: z.string().trim().max(20000).nullable().optional()
 });
 
 export const snoozeSchema = z

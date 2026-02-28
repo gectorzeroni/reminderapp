@@ -351,6 +351,7 @@ async function updateReminderLocal(userId: string, reminderId: string, input: Up
   const reminder = store.reminders.get(reminderId);
   if (!reminder || reminder.userId !== userId) return null;
   if ("remindAt" in input) reminder.remindAt = input.remindAt ?? null;
+  if ("note" in input) reminder.note = input.note?.trim() || null;
   reminder.updatedAt = nowIso();
   if (reminder.status === "archived") {
     reminder.status = "upcoming";
@@ -524,6 +525,7 @@ async function updateReminderSupabase(userId: string, reminderId: string, input:
   if (!supabase) return updateReminderLocal(userId, reminderId, input);
   const patch: Record<string, unknown> = { updated_at: nowIso() };
   if ("remindAt" in input) patch.remind_at = input.remindAt ?? null;
+  if ("note" in input) patch.note = input.note?.trim() || null;
   patch.status = "upcoming";
   patch.archive_reason = null;
   patch.archived_at = null;

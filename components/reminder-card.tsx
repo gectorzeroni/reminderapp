@@ -1,23 +1,24 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { Dialog, DialogPanel } from "@/components/animate-ui/components/headless/dialog";
 import { Checkbox } from "@/components/animate-ui/components/radix/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/animate-ui/components/radix/popover";
-import type { ReminderWithComputed } from "@/lib/types";
+import { parseStoredNote, sanitizeNoteHtml, serializeNote, textToHtml } from "@/lib/note";
 import { extractTagsFromText, summarizeFileSize } from "@/lib/parse";
+import type { ReminderWithComputed } from "@/lib/types";
 
 type Props = {
   reminder: ReminderWithComputed;
   onSnooze: (id: string, preset: "10m" | "1h" | "tomorrow") => void;
   onArchive: (id: string, reason: "completed" | "manual") => Promise<void> | void;
   onReschedule: (id: string, remindAt: string) => void;
+  onUpdateNote?: (id: string, note: string) => Promise<void> | void;
   compact?: boolean;
   onRestore?: (id: string) => void;
 };
 
-function reminderTitle(reminder: ReminderWithComputed) {
-  const note = reminder.note?.trim();
-  if (note) return note.split("\n")[0];
+function fallbackTitle(reminder: ReminderWithComputed) {
   const first = reminder.attachments[0];
   if (!first) return "Reminder";
   if (first.kind === "link") return "Link reminder";
@@ -45,26 +46,38 @@ function formatWhen(remindAt: string | null) {
   }).format(new Date(remindAt));
 }
 
+function htmlToPlainText(html: string): string {
+  return html
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n")
+    .replace(/<[^>]*>/g, "")
+    .replace(/\u00a0/g, " ")
+    .trim();
+}
+
 export function ReminderCard({
   reminder,
   onSnooze,
   onArchive,
   onReschedule,
+  onUpdateNote,
   compact = false,
   onRestore
 }: Props) {
-  const title = reminderTitle(reminder);
+  const parsedNote = parseStoredNote(reminder.note);
+  const title = parsedNote.title || fallbackTitle(reminder);
+  const noteBodyHtml = parsedNote.bodyHtml;
+  const tags = extractTagsFromText(parsedNote.plainText);
   const summaries = attachmentSummary(reminder);
-  const noteBody = (() => {
-    const note = reminder.note?.trim();
-    if (!note) return null;
-    const lines = note.split("\n");
-    if (lines.length <= 1 && lines[0]?.trim() === title.trim()) return null;
-    return note;
-  })();
-  const tags = extractTagsFromText(reminder.note ?? "");
+
   const [menuOpen, setMenuOpen] = useState(false);
   const [isCompleting, setIsCompleting] = useState(false);
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [editorTitle, setEditorTitle] = useState(parsedNote.title || title);
+  const [editorHtml, setEditorHtml] = useState(noteBodyHtml);
+  const [saving, setSaving] = useState(false);
+  const editorRef = useRef<HTMLDivElement>(null);
+
   const hasLeadingCheckbox = !compact && reminder.status !== "archived";
   const imageAttachments = reminder.attachments.filter((a) => a.kind === "image");
   const nonImageAttachments = reminder.attachments.filter((a) => a.kind !== "image");
@@ -79,6 +92,39 @@ export function ReminderCard({
     window.open(href, "_blank", "noopener,noreferrer");
   }
 
+  function isInteractiveTarget(target: EventTarget | null) {
+    if (!(target instanceof Element)) return false;
+    return Boolean(target.closest("button, a, input, select, textarea, [role='link'], [contenteditable='true']"));
+  }
+
+  function openEditor() {
+    if (compact || reminder.status === "archived" || !onUpdateNote) return;
+    setEditorTitle(parsedNote.title || title);
+    setEditorHtml(noteBodyHtml);
+    setEditorOpen(true);
+  }
+
+  function applyFormatting(command: "bold" | "italic" | "underline") {
+    const editor = editorRef.current;
+    if (!editor) return;
+    editor.focus();
+    document.execCommand(command);
+    setEditorHtml(editor.innerHTML);
+  }
+
+  async function saveEditor() {
+    if (!onUpdateNote || saving) return;
+    const plainBody = htmlToPlainText(editorHtml);
+    if (!editorTitle.trim() || !plainBody.trim()) return;
+    setSaving(true);
+    try {
+      await Promise.resolve(onUpdateNote(reminder.id, serializeNote(editorTitle, sanitizeNoteHtml(editorHtml))));
+      setEditorOpen(false);
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function handleComplete() {
     if (isCompleting) return;
     setIsCompleting(true);
@@ -88,239 +134,307 @@ export function ReminderCard({
   }
 
   return (
-    <article
-      className={`reminder-card ${compact ? "compact" : ""} ${isCompleting ? "is-completing" : ""} ${menuOpen ? "menu-open" : ""} ${hasLeadingCheckbox ? "has-leading-check" : ""}`}
-    >
-      <div className="reminder-card__header">
-        <div className="reminder-card__header-main">
-          {!compact && reminder.status !== "archived" ? (
-            <Checkbox
-              checked={isCompleting}
-              disabled={isCompleting}
-              onCheckedChange={(checked) => {
-                if (checked === true) void handleComplete();
-              }}
-              aria-label="Mark reminder as done"
-              className="todo-check-ui size-6 rounded-md border border-[rgba(32,31,26,0.22)] bg-white text-[rgba(17,119,58,0.95)] shadow-none transition-colors data-[state=checked]:border-[rgba(17,119,58,0.7)] data-[state=checked]:bg-[rgba(44,188,100,0.14)] hover:bg-[rgba(17,24,39,0.04)]"
-            />
-          ) : null}
-          <div className="reminder-card__header-text">
-            <p
-              className={
-                reminder.status === "archived"
-                  ? "state-pill archived"
-                  : reminder.isOverdue
-                    ? "state-pill overdue"
-                    : reminder.isDue
-                      ? "state-pill due"
-                      : "state-pill upcoming"
-              }
-            >
-              {reminder.status === "archived"
-                ? `Archived${reminder.archiveReason ? ` · ${reminder.archiveReason}` : ""}`
-                : reminder.remindAt
-                  ? reminder.isOverdue
-                    ? "Overdue"
-                    : reminder.isDue
-                      ? "Due now"
-                      : "Upcoming"
-                  : ""}
-              {reminder.remindAt ? ` · ${formatWhen(reminder.remindAt)}` : ""}
-            </p>
-            <h3>{title}</h3>
+    <>
+      <article
+        className={`reminder-card ${compact ? "compact" : ""} ${isCompleting ? "is-completing" : ""} ${menuOpen ? "menu-open" : ""} ${hasLeadingCheckbox ? "has-leading-check" : ""}`}
+        onClick={(event) => {
+          if (isInteractiveTarget(event.target)) return;
+          openEditor();
+        }}
+      >
+        <div className="reminder-card__header">
+          <div className="reminder-card__header-main">
+            {!compact && reminder.status !== "archived" ? (
+              <Checkbox
+                checked={isCompleting}
+                disabled={isCompleting}
+                onCheckedChange={(checked) => {
+                  if (checked === true) void handleComplete();
+                }}
+                aria-label="Mark reminder as done"
+                className="todo-check-ui size-6 rounded-md border border-[rgba(32,31,26,0.22)] bg-white text-[rgba(17,119,58,0.95)] shadow-none transition-colors data-[state=checked]:border-[rgba(17,119,58,0.7)] data-[state=checked]:bg-[rgba(44,188,100,0.14)] hover:bg-[rgba(17,24,39,0.04)]"
+              />
+            ) : null}
+            <div className="reminder-card__header-text">
+              <p
+                className={
+                  reminder.status === "archived"
+                    ? "state-pill archived"
+                    : reminder.isOverdue
+                      ? "state-pill overdue"
+                      : reminder.isDue
+                        ? "state-pill due"
+                        : "state-pill upcoming"
+                }
+              >
+                {reminder.status === "archived"
+                  ? `Archived${reminder.archiveReason ? ` · ${reminder.archiveReason}` : ""}`
+                  : reminder.remindAt
+                    ? reminder.isOverdue
+                      ? "Overdue"
+                      : reminder.isDue
+                        ? "Due now"
+                        : "Upcoming"
+                    : ""}
+                {reminder.remindAt ? ` · ${formatWhen(reminder.remindAt)}` : ""}
+              </p>
+              <h3>{title}</h3>
+            </div>
           </div>
-        </div>
-        <div className="reminder-card__header-side">
-          {!compact && reminder.status !== "archived" ? (
-            <Popover open={menuOpen} onOpenChange={setMenuOpen}>
-              <div className="card-menu">
-                <PopoverTrigger asChild>
-                  <button
-                    type="button"
-                    className="icon-btn large"
-                    aria-label="More reminder actions"
-                    aria-expanded={menuOpen}
-                  >
-                    ⋯
-                  </button>
-                </PopoverTrigger>
-                <PopoverContent side="bottom" align="end" sideOffset={6} className="card-menu__panel p-1.5">
-                  <button
-                    type="button"
-                    className="card-menu__item"
-                    onClick={() => {
-                      onSnooze(reminder.id, "10m");
-                      setMenuOpen(false);
-                    }}
-                  >
-                    Snooze +10m
-                  </button>
-                  <button
-                    type="button"
-                    className="card-menu__item"
-                    onClick={() => {
-                      onSnooze(reminder.id, "1h");
-                      setMenuOpen(false);
-                    }}
-                  >
-                    Snooze +1h
-                  </button>
-                  <button
-                    type="button"
-                    className="card-menu__item"
-                    onClick={() => {
-                      onSnooze(reminder.id, "tomorrow");
-                      setMenuOpen(false);
-                    }}
-                  >
-                    Snooze tomorrow
-                  </button>
-                  <label className="card-menu__item card-menu__datetime">
-                    Reschedule
-                    <input
-                      type="datetime-local"
-                      onChange={(e) => {
-                        if (!e.target.value) return;
-                        onReschedule(reminder.id, new Date(e.target.value).toISOString());
-                        e.target.value = "";
+          <div className="reminder-card__header-side">
+            {!compact && reminder.status !== "archived" ? (
+              <Popover open={menuOpen} onOpenChange={setMenuOpen}>
+                <div className="card-menu">
+                  <PopoverTrigger asChild>
+                    <button
+                      type="button"
+                      className="icon-btn large"
+                      aria-label="More reminder actions"
+                      aria-expanded={menuOpen}
+                    >
+                      ⋯
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent side="bottom" align="end" sideOffset={6} className="card-menu__panel p-1.5">
+                    <button
+                      type="button"
+                      className="card-menu__item"
+                      onClick={() => {
+                        onSnooze(reminder.id, "10m");
                         setMenuOpen(false);
                       }}
-                    />
-                  </label>
-                  <button
-                    type="button"
-                    className="card-menu__item danger"
-                    onClick={() => {
-                      onArchive(reminder.id, "manual");
-                      setMenuOpen(false);
-                    }}
-                  >
-                    Archive
-                  </button>
-                </PopoverContent>
-              </div>
-            </Popover>
-          ) : null}
+                    >
+                      Snooze +10m
+                    </button>
+                    <button
+                      type="button"
+                      className="card-menu__item"
+                      onClick={() => {
+                        onSnooze(reminder.id, "1h");
+                        setMenuOpen(false);
+                      }}
+                    >
+                      Snooze +1h
+                    </button>
+                    <button
+                      type="button"
+                      className="card-menu__item"
+                      onClick={() => {
+                        onSnooze(reminder.id, "tomorrow");
+                        setMenuOpen(false);
+                      }}
+                    >
+                      Snooze tomorrow
+                    </button>
+                    <label className="card-menu__item card-menu__datetime">
+                      Reschedule
+                      <input
+                        type="datetime-local"
+                        onChange={(e) => {
+                          if (!e.target.value) return;
+                          onReschedule(reminder.id, new Date(e.target.value).toISOString());
+                          e.target.value = "";
+                          setMenuOpen(false);
+                        }}
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      className="card-menu__item"
+                      onClick={() => {
+                        openEditor();
+                        setMenuOpen(false);
+                      }}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      className="card-menu__item danger"
+                      onClick={() => {
+                        onArchive(reminder.id, "manual");
+                        setMenuOpen(false);
+                      }}
+                    >
+                      Archive
+                    </button>
+                  </PopoverContent>
+                </div>
+              </Popover>
+            ) : null}
+          </div>
         </div>
-      </div>
 
-      {noteBody ? <p className="reminder-card__note">{noteBody}</p> : null}
+        {noteBodyHtml ? (
+          <div className="reminder-card__note rich-text" dangerouslySetInnerHTML={{ __html: noteBodyHtml }} />
+        ) : null}
 
-      {tags.length > 0 ? (
-        <div className="tag-chip-list" aria-label="Reminder tags">
-          {tags.map((tag) => (
-            <span key={`${reminder.id}-${tag}`} className="tag-chip">
-              #{tag}
-            </span>
-          ))}
-        </div>
-      ) : null}
+        {tags.length > 0 ? (
+          <div className="tag-chip-list" aria-label="Reminder tags">
+            {tags.map((tag) => (
+              <span key={`${reminder.id}-${tag}`} className="tag-chip">
+                #{tag}
+              </span>
+            ))}
+          </div>
+        ) : null}
 
-      {nonImageAttachments.length > 0 ? (
-        <ul className="attachment-list">
-          {nonImageAttachments.map((attachment) => (
-            <li
-              key={attachment.id}
-              className={`attachment-chip reminder-attachment ${getAttachmentHref(attachment) ? "is-clickable" : ""}`}
-              onClick={() => {
-                const href = getAttachmentHref(attachment);
-                if (href) openAttachment(href);
-              }}
-              onKeyDown={(event) => {
-                if (event.key !== "Enter" && event.key !== " ") return;
-                const href = getAttachmentHref(attachment);
-                if (!href) return;
-                event.preventDefault();
-                openAttachment(href);
-              }}
-              role={getAttachmentHref(attachment) ? "link" : undefined}
-              tabIndex={getAttachmentHref(attachment) ? 0 : undefined}
-            >
-              {attachment.kind === "link" ? (
-                <>
-                  <div className="reminder-attachment__icon">
-                    {attachment.previewIconUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={attachment.previewIconUrl} alt="" width={22} height={22} />
-                    ) : (
-                      <span aria-hidden="true">🔗</span>
-                    )}
-                  </div>
-                  <div className="reminder-attachment__body">
-                    <span>{attachment.previewTitle || attachment.url || "Link"}</span>
-                    {attachment.url ? <small>{attachment.url}</small> : null}
-                  </div>
-                </>
-              ) : attachment.kind === "file" ? (
-                <>
-                  <div className="reminder-attachment__icon">
-                    <span aria-hidden="true">📎</span>
-                  </div>
-                  <div className="reminder-attachment__body">
-                    <span>{attachment.fileName || "File"}</span>
-                    <small>
-                      {attachment.fileSizeBytes ? summarizeFileSize(attachment.fileSizeBytes) : "Attached file"}
-                    </small>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className="reminder-attachment__icon">
-                    <span aria-hidden="true">📝</span>
-                  </div>
-                  <div className="reminder-attachment__body">
-                    <span>{attachment.textContent?.slice(0, 120) || "Text snippet"}</span>
-                  </div>
-                </>
-              )}
-            </li>
-          ))}
-        </ul>
-      ) : null}
-
-      {imageAttachments.length > 0 ? (
-        <ul className={`image-attachment-row ${hasLeadingCheckbox ? "with-leading-check" : ""}`}>
-          {imageAttachments.map((attachment) => {
-            const href = getAttachmentHref(attachment);
-            return (
+        {nonImageAttachments.length > 0 ? (
+          <ul className="attachment-list">
+            {nonImageAttachments.map((attachment) => (
               <li
                 key={attachment.id}
-                className={`image-attachment-tile ${href ? "is-clickable" : ""}`}
+                className={`attachment-chip reminder-attachment ${getAttachmentHref(attachment) ? "is-clickable" : ""}`}
                 onClick={() => {
+                  const href = getAttachmentHref(attachment);
                   if (href) openAttachment(href);
                 }}
                 onKeyDown={(event) => {
                   if (event.key !== "Enter" && event.key !== " ") return;
+                  const href = getAttachmentHref(attachment);
                   if (!href) return;
                   event.preventDefault();
                   openAttachment(href);
                 }}
-                role={href ? "link" : undefined}
-                tabIndex={href ? 0 : undefined}
+                role={getAttachmentHref(attachment) ? "link" : undefined}
+                tabIndex={getAttachmentHref(attachment) ? 0 : undefined}
               >
-                {attachment.previewImageUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={attachment.previewImageUrl} alt="" className="image-attachment-tile__img" />
+                {attachment.kind === "link" ? (
+                  <>
+                    <div className="reminder-attachment__icon">
+                      {attachment.previewIconUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={attachment.previewIconUrl} alt="" width={22} height={22} />
+                      ) : (
+                        <span aria-hidden="true">🔗</span>
+                      )}
+                    </div>
+                    <div className="reminder-attachment__body">
+                      <span>{attachment.previewTitle || attachment.url || "Link"}</span>
+                      {attachment.url ? <small>{attachment.url}</small> : null}
+                    </div>
+                  </>
+                ) : attachment.kind === "file" ? (
+                  <>
+                    <div className="reminder-attachment__icon">
+                      <span aria-hidden="true">📎</span>
+                    </div>
+                    <div className="reminder-attachment__body">
+                      <span>{attachment.fileName || "File"}</span>
+                      <small>
+                        {attachment.fileSizeBytes ? summarizeFileSize(attachment.fileSizeBytes) : "Attached file"}
+                      </small>
+                    </div>
+                  </>
                 ) : (
-                  <span aria-hidden="true">🖼️</span>
+                  <>
+                    <div className="reminder-attachment__icon">
+                      <span aria-hidden="true">📝</span>
+                    </div>
+                    <div className="reminder-attachment__body">
+                      <span>{attachment.textContent?.slice(0, 120) || "Text snippet"}</span>
+                    </div>
+                  </>
                 )}
               </li>
-            );
-          })}
-        </ul>
-      ) : null}
+            ))}
+          </ul>
+        ) : null}
 
-      {compact && reminder.status === "archived" && onRestore ? (
-        <div className="reminder-actions">
-          <button onClick={() => onRestore(reminder.id)} className="btn">
-            Restore (reschedule)
-          </button>
-        </div>
-      ) : null}
+        {imageAttachments.length > 0 ? (
+          <ul className={`image-attachment-row ${hasLeadingCheckbox ? "with-leading-check" : ""}`}>
+            {imageAttachments.map((attachment) => {
+              const href = getAttachmentHref(attachment);
+              return (
+                <li
+                  key={attachment.id}
+                  className={`image-attachment-tile ${href ? "is-clickable" : ""}`}
+                  onClick={() => {
+                    if (href) openAttachment(href);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key !== "Enter" && event.key !== " ") return;
+                    if (!href) return;
+                    event.preventDefault();
+                    openAttachment(href);
+                  }}
+                  role={href ? "link" : undefined}
+                  tabIndex={href ? 0 : undefined}
+                >
+                  {attachment.previewImageUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={attachment.previewImageUrl} alt="" className="image-attachment-tile__img" />
+                  ) : (
+                    <span aria-hidden="true">🖼️</span>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        ) : null}
 
-      {compact && summaries.length > 0 ? (
-        <p className="archive-summary">{summaries.slice(0, 2).join(" · ")}</p>
-      ) : null}
-    </article>
+        {compact && reminder.status === "archived" && onRestore ? (
+          <div className="reminder-actions">
+            <button onClick={() => onRestore(reminder.id)} className="btn">
+              Restore (reschedule)
+            </button>
+          </div>
+        ) : null}
+
+        {compact && summaries.length > 0 ? (
+          <p className="archive-summary">{summaries.slice(0, 2).join(" · ")}</p>
+        ) : null}
+      </article>
+
+      <Dialog open={editorOpen} onClose={setEditorOpen} className="note-editor-dialog">
+        <DialogPanel className="note-editor-panel p-0" showCloseButton={false}>
+          <div className="note-editor__header">
+            <strong>Edit note</strong>
+            <button type="button" className="icon-btn" onClick={() => setEditorOpen(false)} aria-label="Close edit note">
+              ×
+            </button>
+          </div>
+          <div className="note-editor__body">
+            <input
+              className="note-editor__title"
+              value={editorTitle}
+              onChange={(e) => setEditorTitle(e.target.value)}
+              placeholder="Title"
+              maxLength={180}
+            />
+            <div className="note-editor__format">
+              <button type="button" className="icon-btn" onClick={() => applyFormatting("bold")} aria-label="Bold">
+                B
+              </button>
+              <button type="button" className="icon-btn" onClick={() => applyFormatting("italic")} aria-label="Italic">
+                <em>I</em>
+              </button>
+              <button type="button" className="icon-btn" onClick={() => applyFormatting("underline")} aria-label="Underline">
+                <u>U</u>
+              </button>
+            </div>
+            <div
+              ref={editorRef}
+              className="note-editor__content rich-text"
+              contentEditable
+              suppressContentEditableWarning
+              role="textbox"
+              data-placeholder="Write details..."
+              onInput={(e) => setEditorHtml((e.target as HTMLDivElement).innerHTML)}
+              dangerouslySetInnerHTML={{ __html: editorHtml || textToHtml("") }}
+            />
+          </div>
+          <div className="note-editor__footer">
+            <button type="button" className="btn" onClick={() => setEditorOpen(false)}>
+              Cancel
+            </button>
+            <button type="button" className="btn primary" onClick={() => void saveEditor()} disabled={saving}>
+              {saving ? "Saving..." : "Save"}
+            </button>
+          </div>
+        </DialogPanel>
+      </Dialog>
+    </>
   );
 }
+

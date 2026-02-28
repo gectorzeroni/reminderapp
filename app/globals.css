@@ -375,8 +375,25 @@ select {
 
 .reminder-card__note {
   margin: 0;
-  white-space: pre-wrap;
   color: #2c2a22;
+}
+
+.rich-text {
+  white-space: pre-wrap;
+}
+
+.rich-text p {
+  margin: 0 0 0.45em;
+}
+
+.rich-text p:last-child {
+  margin-bottom: 0;
+}
+
+.rich-text ul,
+.rich-text ol {
+  margin: 0.35em 0 0.35em 1.2em;
+  padding: 0;
 }
 
 .tag-chip-list {
@@ -1012,6 +1029,41 @@ select {
   outline: none;
 }
 
+.composer-title-input {
+  width: 100%;
+  border: 1px solid var(--stroke);
+  border-radius: 12px;
+  min-height: 40px;
+  padding: 8px 10px;
+  font-weight: 600;
+  background: #fff;
+}
+
+.composer-format-toolbar {
+  display: inline-flex;
+  gap: 6px;
+}
+
+.composer-format-toolbar .icon-btn {
+  width: 32px;
+  height: 32px;
+  font-size: 0.88rem;
+}
+
+.composer-body-input {
+  border: 1px solid var(--stroke);
+  border-radius: 12px;
+  min-height: 88px;
+  padding: 9px 10px;
+  background: #fff;
+  outline: none;
+}
+
+.composer-body-input:empty::before {
+  content: attr(data-placeholder);
+  color: rgba(32, 31, 26, 0.48);
+}
+
 .composer-attach-icon {
   width: 40px;
   height: 40px;
@@ -1142,6 +1194,80 @@ select {
 
 .schedule-popover .btn.subtle {
   background: #fff;
+}
+
+.note-editor-dialog [data-slot="dialog-backdrop"] {
+  background: rgba(32, 31, 26, 0.28);
+  backdrop-filter: blur(6px);
+}
+
+.note-editor-panel {
+  width: min(680px, calc(100vw - 24px));
+  max-height: min(78vh, 680px);
+  background: #fafafa;
+  border: 1px solid var(--stroke);
+  border-radius: 18px;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  overflow: hidden;
+}
+
+.note-editor__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 14px 10px;
+  border-bottom: 1px solid var(--stroke);
+}
+
+.note-editor__body {
+  padding: 12px 14px;
+  display: grid;
+  gap: 10px;
+  overflow: auto;
+}
+
+.note-editor__title {
+  width: 100%;
+  border: 1px solid var(--stroke);
+  border-radius: 10px;
+  min-height: 40px;
+  padding: 8px 10px;
+  background: #fff;
+  font-weight: 600;
+}
+
+.note-editor__format {
+  display: inline-flex;
+  gap: 6px;
+}
+
+.note-editor__format .icon-btn {
+  width: 32px;
+  height: 32px;
+  font-size: 0.88rem;
+}
+
+.note-editor__content {
+  border: 1px solid var(--stroke);
+  border-radius: 12px;
+  min-height: 220px;
+  padding: 10px;
+  background: #fff;
+  outline: none;
+}
+
+.note-editor__content:empty::before {
+  content: attr(data-placeholder);
+  color: rgba(32, 31, 26, 0.48);
+}
+
+.note-editor__footer {
+  border-top: 1px solid var(--stroke);
+  padding: 10px 14px 14px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 .schedule-popover__grid {

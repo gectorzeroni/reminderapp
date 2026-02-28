@@ -6,6 +6,7 @@ import { useMemo, useRef, useState } from "react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/animate-ui/components/radix/popover";
 import { MAX_ATTACHMENTS } from "@/lib/constants";
 import { extractTagsFromText, extractUrlsFromText, isLikelyUrl } from "@/lib/parse";
+import { serializeNote, textToHtml } from "@/lib/note";
 import type { CreateAttachmentInput } from "@/lib/types";
 
 type DraftAttachment = CreateAttachmentInput & {
@@ -54,6 +55,15 @@ function formatSchedulePill(value: string) {
   }).format(d);
 }
 
+function htmlToPlainText(html: string): string {
+  return html
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n")
+    .replace(/<[^>]*>/g, "")
+    .replace(/\u00a0/g, " ")
+    .trim();
+}
+
 async function fileToAttachment(file: File): Promise<DraftAttachment> {
   const isImage = file.type.startsWith("image/");
   const previewImageUrl = isImage ? await fileToDataUrl(file) : null;
@@ -70,19 +80,22 @@ async function fileToAttachment(file: File): Promise<DraftAttachment> {
 }
 
 export function ReminderComposer({ onCreate }: Props) {
-  const [note, setNote] = useState("");
+  const [title, setTitle] = useState("");
+  const [bodyHtml, setBodyHtml] = useState("");
   const [remindAt, setRemindAt] = useState("");
   const [attachments, setAttachments] = useState<DraftAttachment[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const bodyEditorRef = useRef<HTMLDivElement>(null);
 
-  const hasContent = note.trim().length > 0 || attachments.length > 0;
-  const capacityRemaining = MAX_ATTACHMENTS - attachments.length;
   const scheduleParts = useMemo(() => splitLocalDatetime(remindAt), [remindAt]);
-  const tags = useMemo(() => extractTagsFromText(note), [note]);
   const scheduleLabel = useMemo(() => formatSchedulePill(remindAt), [remindAt]);
+  const bodyText = useMemo(() => htmlToPlainText(bodyHtml), [bodyHtml]);
+  const tags = useMemo(() => extractTagsFromText([title, bodyText].filter(Boolean).join("\n")), [title, bodyText]);
+  const hasContent = title.trim().length > 0 || bodyText.trim().length > 0 || attachments.length > 0;
+  const capacityRemaining = MAX_ATTACHMENTS - attachments.length;
 
   async function addFiles(files: FileList | File[]) {
     const list = Array.from(files).slice(0, capacityRemaining);
@@ -121,6 +134,10 @@ export function ReminderComposer({ onCreate }: Props) {
     setRemindAt(`${date}T${timeValue || "09:00"}`);
   }
 
+  function setBodyEditorHtml(next: string) {
+    setBodyHtml(next);
+  }
+
   function addTextPayload(text: string) {
     const trimmed = text.trim();
     if (!trimmed) return;
@@ -154,35 +171,26 @@ export function ReminderComposer({ onCreate }: Props) {
         }));
 
       const stripped = trimmed.replace(/\bhttps?:\/\/[^\s<>"']+/gi, "").trim();
-      if (!note.trim()) {
-        if (stripped) setNote(stripped);
+      if (!title.trim() && stripped) {
+        setTitle(stripped.split("\n")[0]?.slice(0, 180) ?? stripped.slice(0, 180));
       } else if (stripped) {
-        urlAttachments.push({
-          localId: makeLocalId(),
-          kind: "text_snippet",
-          textContent: stripped,
-          metadataStatus: "ready"
-        });
+        setBodyEditorHtml(`${bodyHtml}${bodyHtml ? "<br>" : ""}${textToHtml(stripped)}`);
       }
 
       setAttachments((prev) => [...prev, ...urlAttachments].slice(0, MAX_ATTACHMENTS));
       return;
     }
 
-    if (!note.trim()) {
-      setNote(trimmed);
-    } else {
-      setAttachments((prev) =>
-        prev
-          .concat({
-            localId: makeLocalId(),
-            kind: "text_snippet",
-            textContent: trimmed,
-            metadataStatus: "ready"
-          })
-          .slice(0, MAX_ATTACHMENTS)
-      );
+    if (!title.trim()) {
+      const [firstLine, ...rest] = trimmed.split("\n");
+      setTitle(firstLine.slice(0, 180));
+      if (rest.join("\n").trim()) {
+        setBodyEditorHtml(textToHtml(rest.join("\n").trim()));
+      }
+      return;
     }
+
+    setBodyEditorHtml(`${bodyHtml}${bodyHtml ? "<br>" : ""}${textToHtml(trimmed)}`);
   }
 
   async function onDrop(event: DragEvent<HTMLDivElement>) {
@@ -193,7 +201,7 @@ export function ReminderComposer({ onCreate }: Props) {
     if (text) addTextPayload(text);
   }
 
-  async function onPaste(event: ClipboardEvent<HTMLTextAreaElement>) {
+  async function onBodyPaste(event: ClipboardEvent<HTMLDivElement>) {
     const files = event.clipboardData.files;
     if (files?.length) {
       event.preventDefault();
@@ -201,18 +209,25 @@ export function ReminderComposer({ onCreate }: Props) {
       return;
     }
     const text = event.clipboardData.getData("text/plain");
-    if (isLikelyUrl(text) && !event.currentTarget.value.trim()) {
+    if (isLikelyUrl(text)) {
       event.preventDefault();
       addTextPayload(text);
     }
   }
 
-  function onTextareaKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+  function onBodyKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     if (event.key !== "Enter") return;
-    if (event.shiftKey) return;
-    if (event.nativeEvent.isComposing) return;
+    if (!(event.metaKey || event.ctrlKey)) return;
     event.preventDefault();
-    event.currentTarget.form?.requestSubmit();
+    event.currentTarget.closest("form")?.requestSubmit();
+  }
+
+  function applyFormatting(command: "bold" | "italic" | "underline") {
+    const editor = bodyEditorRef.current;
+    if (!editor) return;
+    editor.focus();
+    document.execCommand(command);
+    setBodyEditorHtml(editor.innerHTML);
   }
 
   async function prepareAttachments(): Promise<CreateAttachmentInput[]> {
@@ -276,7 +291,11 @@ export function ReminderComposer({ onCreate }: Props) {
     event.preventDefault();
     setError(null);
     if (!hasContent) {
-      setError("Add a note or drop something first.");
+      setError("Add a title, body, or attachment first.");
+      return;
+    }
+    if (!title.trim() || !bodyText.trim()) {
+      setError("Title and body are required.");
       return;
     }
 
@@ -284,11 +303,13 @@ export function ReminderComposer({ onCreate }: Props) {
     try {
       const preparedAttachments = await prepareAttachments();
       await onCreate({
-        note,
+        note: serializeNote(title, bodyHtml || textToHtml(bodyText)),
         remindAt: remindAt ? new Date(remindAt).toISOString() : null,
         attachments: preparedAttachments
       });
-      setNote("");
+      setTitle("");
+      setBodyHtml("");
+      if (bodyEditorRef.current) bodyEditorRef.current.innerHTML = "";
       setAttachments([]);
       setRemindAt("");
       setScheduleOpen(false);
@@ -307,13 +328,38 @@ export function ReminderComposer({ onCreate }: Props) {
         onDrop={onDrop}
         aria-label="Drop links, text, images, or files here"
       >
-        <textarea
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          onPaste={onPaste}
-          onKeyDown={onTextareaKeyDown}
-          placeholder="Drop a link, image, file, or type a reminder note..."
-          rows={2}
+        <input
+          className="composer-title-input"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          maxLength={180}
+          placeholder="Title"
+          aria-label="Reminder title"
+        />
+
+        <div className="composer-format-toolbar" aria-label="Text formatting">
+          <button type="button" className="icon-btn" onClick={() => applyFormatting("bold")} aria-label="Bold">
+            B
+          </button>
+          <button type="button" className="icon-btn" onClick={() => applyFormatting("italic")} aria-label="Italic">
+            <em>I</em>
+          </button>
+          <button type="button" className="icon-btn" onClick={() => applyFormatting("underline")} aria-label="Underline">
+            <u>U</u>
+          </button>
+        </div>
+
+        <div
+          ref={bodyEditorRef}
+          className="composer-body-input"
+          contentEditable
+          suppressContentEditableWarning
+          role="textbox"
+          aria-label="Reminder body"
+          data-placeholder="Write details..."
+          onInput={(e) => setBodyEditorHtml((e.target as HTMLDivElement).innerHTML)}
+          onPaste={onBodyPaste}
+          onKeyDown={onBodyKeyDown}
         />
 
         {tags.length > 0 ? (

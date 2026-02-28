@@ -19,6 +19,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/animate-ui/components/radix/popover";
 import { ReminderComposer } from "@/components/reminder-composer";
 import { ReminderCard } from "@/components/reminder-card";
+import { parseStoredNote } from "@/lib/note";
 import { extractTagsFromText } from "@/lib/parse";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import { computeReminderState } from "@/lib/time";
@@ -167,7 +168,7 @@ export function RemindersApp() {
   const availableTags = useMemo(() => {
     const tags = new Set<string>();
     for (const reminder of [...upcoming, ...archive]) {
-      for (const tag of extractTagsFromText(reminder.note ?? "")) {
+      for (const tag of extractTagsFromText(parseStoredNote(reminder.note).plainText)) {
         tags.add(tag);
       }
     }
@@ -178,14 +179,15 @@ export function RemindersApp() {
     const normalizedQuery = searchQuery.trim().toLowerCase();
 
     return upcomingComputed.filter((reminder) => {
-      const noteTags = extractTagsFromText(reminder.note ?? "");
+      const noteText = parseStoredNote(reminder.note).plainText;
+      const noteTags = extractTagsFromText(noteText);
       const hasTagMatch =
         selectedTags.length === 0 || selectedTags.every((tag) => noteTags.includes(tag));
       if (!hasTagMatch) return false;
       if (!normalizedQuery) return true;
 
       const haystack = [
-        reminder.note ?? "",
+        noteText,
         ...reminder.attachments.map((attachment) => {
           if (attachment.kind === "link") {
             return `${attachment.previewTitle ?? ""} ${attachment.url ?? ""}`;
@@ -288,6 +290,18 @@ export function RemindersApp() {
       return [...others, body.reminder].sort(sortByReminderTime);
     });
     setArchive((prev) => prev.filter((r) => r.id !== id));
+  }
+
+  async function updateReminderNote(id: string, note: string) {
+    const res = await fetch(`/api/reminders/${id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ note })
+    });
+    if (!res.ok) return;
+    const body = (await res.json()) as { reminder: Reminder };
+    setUpcoming((prev) => prev.map((r) => (r.id === id ? body.reminder : r)).sort(sortByReminderTime));
+    setArchive((prev) => prev.map((r) => (r.id === id ? body.reminder : r)));
   }
 
   async function restoreReminder(id: string) {
@@ -547,10 +561,11 @@ export function RemindersApp() {
                 >
                   <ReminderCard
                     reminder={reminder}
-                    onSnooze={snooze}
-                    onArchive={archiveReminder}
-                    onReschedule={rescheduleReminder}
-                  />
+                  onSnooze={snooze}
+                  onArchive={archiveReminder}
+                  onReschedule={rescheduleReminder}
+                  onUpdateNote={updateReminderNote}
+                />
                 </motion.li>
               ))}
             </AnimatePresence>
@@ -604,6 +619,7 @@ export function RemindersApp() {
                     onSnooze={snooze}
                     onArchive={archiveReminder}
                     onReschedule={rescheduleReminder}
+                    onUpdateNote={updateReminderNote}
                     onRestore={restoreReminder}
                   />
                 </li>

@@ -72,6 +72,7 @@ export interface CreateReminderInput {
 
 export interface UpdateReminderInput {
   remindAt?: string | null;
+  note?: string | null;
 }
 
 export interface ArchiveReminderInput {
