@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 :root {
-  --font-inter: "Golos Text", "Inter Variable", "Inter";
+  --font-inter: "Inter Variable", "Inter";
   --font-display: "Rubik Burned";
   --bg: #f7f7f8;
   --bg-accent: none;
@@ -1139,7 +1139,7 @@ select {
   letter-spacing: 0;
   background: transparent;
   outline: none;
-  margin: 0;
+  margin: 0 0 4px;
 }
 
 .composer-body-input {

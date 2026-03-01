@@ -10,7 +10,6 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@fontsource/golos-text": "^5.2.8",
     "@fontsource/inter": "^5.2.8",
     "@fontsource/rubik-burned": "^5.2.7",
     "@headlessui/react": "^2.2.9",
