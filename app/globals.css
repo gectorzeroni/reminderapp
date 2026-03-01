@@ -279,7 +279,7 @@ select {
   min-height: 45vh;
 }
 
-.upcoming-panel.is-loading {
+.upcoming-panel.is-centered {
   align-content: center;
   min-height: calc(100vh - 260px);
 }
@@ -1639,6 +1639,15 @@ select {
 
 .empty-state.compact {
   margin: 0 14px 14px;
+}
+
+.archive-panel .empty-state.compact {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  margin: auto;
+  color: var(--muted);
+  text-align: center;
 }
 
 .empty-state.error {

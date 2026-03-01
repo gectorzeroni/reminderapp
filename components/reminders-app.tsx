@@ -76,6 +76,16 @@ function initials(name?: string | null) {
     .join("");
 }
 
+function bestUserLabel(user: AuthUserIdentity, fallbackName?: string | null): string {
+  if (!user?.email) return fallbackName || "Demo User";
+  const digitsFromId = (user.id || "").replace(/\D/g, "");
+  if (digitsFromId.length > 0) {
+    return `bestuser${digitsFromId.slice(-4)}`;
+  }
+  const hash = (user.id || user.email).split("").reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
+  return `bestuser${(hash % 10000).toString().padStart(4, "0")}`;
+}
+
 export function RemindersApp() {
   const router = useRouter();
   const [upcoming, setUpcoming] = useState<Reminder[]>([]);
@@ -227,6 +237,7 @@ export function RemindersApp() {
     });
     return items;
   }, [filteredUpcoming, sortMode]);
+  const isCenteredFeedState = loading || Boolean(error) || filteredAndSortedUpcoming.length === 0;
 
   const timezoneOptions = useMemo(() => {
     const current = profile?.timezone?.trim();
@@ -521,7 +532,7 @@ export function RemindersApp() {
         </div>
       </header>
 
-      <section className={`upcoming-panel ${loading ? "is-loading" : ""}`} aria-live="polite">
+      <section className={`upcoming-panel ${isCenteredFeedState ? "is-centered" : ""}`} aria-live="polite">
         {loading ? (
           <div className="loading-reminders" role="status" aria-live="polite" aria-label="Loading reminders">
             {showLoaderAnimation ? (
@@ -776,7 +787,7 @@ export function RemindersApp() {
             >
               <div className="settings-menu__section">
                 <p className="settings-title">
-                  {authUser?.name || profile?.displayName || "Demo User"}
+                  {bestUserLabel(authUser, authUser?.name || profile?.displayName)}
                 </p>
                 <p className="settings-subtle">{authUser?.email || "Account settings"}</p>
               </div>
