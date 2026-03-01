@@ -521,7 +521,7 @@ export function RemindersApp() {
         </div>
       </header>
 
-      <section className="upcoming-panel" aria-live="polite">
+      <section className={`upcoming-panel ${loading ? "is-loading" : ""}`} aria-live="polite">
         {loading ? (
           <div className="loading-reminders" role="status" aria-live="polite" aria-label="Loading reminders">
             {showLoaderAnimation ? (

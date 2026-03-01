@@ -48,7 +48,12 @@ export function sanitizeNoteHtml(input: string): string {
       .map((entry) => entry.trim())
       .filter(Boolean);
 
-    const safe: string[] = [];
+    let colorValue: string | null = null;
+    let backgroundImageValue: string | null = null;
+    let backgroundClipText = false;
+    let webkitBackgroundClipText = false;
+    let webkitTextFillValue: string | null = null;
+
     for (const entry of entries) {
       const idx = entry.indexOf(":");
       if (idx <= 0) continue;
@@ -57,27 +62,39 @@ export function sanitizeNoteHtml(input: string): string {
       if (!rawValue) continue;
 
       if (prop === "color") {
-        const color = normalizeCssColor(rawValue);
-        if (color) safe.push(`color:${color}`);
+        colorValue = normalizeCssColor(rawValue);
         continue;
       }
 
       if (prop === "background-image") {
         if (/^linear-gradient\([^)]*\)$/i.test(rawValue)) {
-          safe.push(`background-image:${rawValue}`);
+          backgroundImageValue = rawValue;
         }
         continue;
       }
 
       if (prop === "background-clip" || prop === "-webkit-background-clip") {
-        if (rawValue.toLowerCase() === "text") safe.push(`${prop}:text`);
+        if (rawValue.toLowerCase() === "text") {
+          if (prop === "background-clip") backgroundClipText = true;
+          if (prop === "-webkit-background-clip") webkitBackgroundClipText = true;
+        }
         continue;
       }
 
       if (prop === "-webkit-text-fill-color") {
-        const textFill = rawValue.toLowerCase() === "transparent" ? "transparent" : normalizeCssColor(rawValue);
-        if (textFill) safe.push(`-webkit-text-fill-color:${textFill}`);
+        webkitTextFillValue = rawValue.toLowerCase() === "transparent" ? "transparent" : normalizeCssColor(rawValue);
       }
+    }
+
+    const safe: string[] = [];
+    if (colorValue) safe.push(`color:${colorValue}`);
+    if (backgroundImageValue) safe.push(`background-image:${backgroundImageValue}`);
+    if (backgroundClipText) safe.push("background-clip:text");
+    if (webkitBackgroundClipText) safe.push("-webkit-background-clip:text");
+
+    const isGradientText = Boolean(backgroundImageValue && (backgroundClipText || webkitBackgroundClipText));
+    if (webkitTextFillValue && (webkitTextFillValue !== "transparent" || isGradientText)) {
+      safe.push(`-webkit-text-fill-color:${webkitTextFillValue}`);
     }
 
     return safe.join(";");
