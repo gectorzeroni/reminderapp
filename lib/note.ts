@@ -33,12 +33,79 @@ export function textToHtml(text: string): string {
 }
 
 export function sanitizeNoteHtml(input: string): string {
+  function normalizeCssColor(value: string): string | null {
+    const v = value.trim();
+    if (!v) return null;
+    if (/^#[0-9a-f]{3,8}$/i.test(v)) return v;
+    if (/^(rgb|rgba|hsl|hsla)\([^)]*\)$/i.test(v)) return v;
+    if (/^[a-z]+$/i.test(v)) return v.toLowerCase();
+    return null;
+  }
+
+  function sanitizeStyleAttribute(styleValue: string): string {
+    const entries = styleValue
+      .split(";")
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+
+    const safe: string[] = [];
+    for (const entry of entries) {
+      const idx = entry.indexOf(":");
+      if (idx <= 0) continue;
+      const prop = entry.slice(0, idx).trim().toLowerCase();
+      const rawValue = entry.slice(idx + 1).trim();
+      if (!rawValue) continue;
+
+      if (prop === "color") {
+        const color = normalizeCssColor(rawValue);
+        if (color) safe.push(`color:${color}`);
+        continue;
+      }
+
+      if (prop === "background-image") {
+        if (/^linear-gradient\([^)]*\)$/i.test(rawValue)) {
+          safe.push(`background-image:${rawValue}`);
+        }
+        continue;
+      }
+
+      if (prop === "background-clip" || prop === "-webkit-background-clip") {
+        if (rawValue.toLowerCase() === "text") safe.push(`${prop}:text`);
+        continue;
+      }
+
+      if (prop === "-webkit-text-fill-color") {
+        const textFill = rawValue.toLowerCase() === "transparent" ? "transparent" : normalizeCssColor(rawValue);
+        if (textFill) safe.push(`-webkit-text-fill-color:${textFill}`);
+      }
+    }
+
+    return safe.join(";");
+  }
+
   let html = input || "";
   html = html.replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, "");
   html = html.replace(/<style[\s\S]*?>[\s\S]*?<\/style>/gi, "");
   html = html.replace(/<!--[\s\S]*?-->/g, "");
-  html = html.replace(/<(?!\/?(b|strong|i|em|u|s|br|p|ul|ol|li)\b)[^>]*>/gi, "");
+
+  // Convert legacy <font color="..."> to span style so color formatting survives saves.
+  html = html.replace(/<font\b([^>]*)>/gi, (_m, attrs: string) => {
+    const colorMatch = attrs.match(/\bcolor\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s>]+))/i);
+    const colorRaw = colorMatch?.[1] ?? colorMatch?.[2] ?? colorMatch?.[3] ?? "";
+    const color = normalizeCssColor(colorRaw);
+    return color ? `<span style="color:${color}">` : "<span>";
+  });
+  html = html.replace(/<\/font>/gi, "</span>");
+
+  html = html.replace(/<(?!\/?(b|strong|i|em|u|s|br|p|ul|ol|li|span)\b)[^>]*>/gi, "");
   html = html.replace(/<(\/?)(b|strong|i|em|u|s|br|p|ul|ol|li)(?:\s[^>]*)?>/gi, "<$1$2>");
+  html = html.replace(/<span(?:\s[^>]*)?>/gi, (tag) => {
+    const styleMatch = tag.match(/\bstyle\s*=\s*(?:"([^"]*)"|'([^']*)')/i);
+    const rawStyle = styleMatch?.[1] ?? styleMatch?.[2] ?? "";
+    const safeStyle = sanitizeStyleAttribute(rawStyle);
+    return safeStyle ? `<span style="${safeStyle}">` : "<span>";
+  });
+  html = html.replace(/<\/span(?:\s[^>]*)?>/gi, "</span>");
   return html.trim();
 }
 
