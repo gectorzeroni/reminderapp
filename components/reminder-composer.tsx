@@ -784,7 +784,7 @@ export function ReminderComposer({ onCreate }: Props) {
               whileHover={submitting ? undefined : { scale: 1.04 }}
               whileTap={submitting ? undefined : { scale: 0.96 }}
             >
-              {submitting ? "Saving..." : "Save reminder"}
+              {submitting ? "Saving..." : "Post!"}
             </motion.button>
           </div>
         </div>

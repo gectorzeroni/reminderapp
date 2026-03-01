@@ -113,6 +113,16 @@ export function ReminderCard({
   const showInlineBody = !title && Boolean(noteBodyHtml);
   const tags = parsedNote.tags.length ? parsedNote.tags : extractTagsFromText(parsedNote.plainText);
   const summaries = attachmentSummary(reminder);
+  const reminderStateLabel =
+    reminder.status === "archived"
+      ? `Archived${reminder.archiveReason ? ` · ${reminder.archiveReason}` : ""}`
+      : reminder.remindAt
+        ? reminder.isOverdue
+          ? "Overdue"
+          : reminder.isDue
+            ? "Due now"
+            : "Upcoming"
+        : "";
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [isCompleting, setIsCompleting] = useState(false);
@@ -440,28 +450,22 @@ export function ReminderCard({
               />
             ) : null}
             <div className="reminder-card__header-text">
-              <p
-                className={
-                  reminder.status === "archived"
-                    ? "state-pill archived"
-                    : reminder.isOverdue
-                      ? "state-pill overdue"
-                      : reminder.isDue
-                        ? "state-pill due"
-                        : "state-pill upcoming"
-                }
-              >
-                {reminder.status === "archived"
-                  ? `Archived${reminder.archiveReason ? ` · ${reminder.archiveReason}` : ""}`
-                  : reminder.remindAt
-                    ? reminder.isOverdue
-                      ? "Overdue"
-                      : reminder.isDue
-                        ? "Due now"
-                        : "Upcoming"
-                    : ""}
-                {reminder.remindAt ? ` · ${formatWhen(reminder.remindAt)}` : ""}
-              </p>
+              {reminderStateLabel ? (
+                <p
+                  className={
+                    reminder.status === "archived"
+                      ? "state-pill archived"
+                      : reminder.isOverdue
+                        ? "state-pill overdue"
+                        : reminder.isDue
+                          ? "state-pill due"
+                          : "state-pill upcoming"
+                  }
+                >
+                  {reminderStateLabel}
+                  {reminder.remindAt ? ` · ${formatWhen(reminder.remindAt)}` : ""}
+                </p>
+              ) : null}
               {title ? <h3>{title}</h3> : null}
               {showInlineBody ? (
                 <div className="reminder-card__note rich-text" dangerouslySetInnerHTML={{ __html: noteBodyHtml }} />
