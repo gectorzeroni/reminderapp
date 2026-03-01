@@ -2,27 +2,35 @@
 
 import * as motion from "motion/react-client";
 import { AnimatePresence } from "motion/react";
+import type { ClipboardEvent, DragEvent } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Checkbox } from "@/components/animate-ui/components/radix/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/animate-ui/components/radix/popover";
+import { MAX_ATTACHMENTS } from "@/lib/constants";
 import { parseStoredNote, sanitizeNoteHtml, serializeNote } from "@/lib/note";
 import { getTagChipStyle } from "@/lib/tag-colors";
 import {
   extractTagsFromText,
+  extractUrlsFromText,
+  isLikelyUrl,
   stripSpecificTagFromHtml,
   stripSpecificTagFromText,
   stripTagsFromHtml,
   stripTagsFromText,
   summarizeFileSize
 } from "@/lib/parse";
-import type { ReminderWithComputed } from "@/lib/types";
+import type { CreateAttachmentInput, ReminderWithComputed } from "@/lib/types";
 
 type Props = {
   reminder: ReminderWithComputed;
   onSnooze: (id: string, preset: "10m" | "1h" | "tomorrow") => void;
   onArchive: (id: string, reason: "completed" | "manual") => Promise<void> | void;
   onReschedule: (id: string, remindAt: string) => void;
-  onUpdateNote?: (id: string, note: string, removeAttachmentIds?: string[]) => Promise<void> | void;
+  onUpdateNote?: (
+    id: string,
+    note: string,
+    options?: { removeAttachmentIds?: string[]; attachments?: CreateAttachmentInput[]; remindAt?: string | null }
+  ) => Promise<void> | void;
   compact?: boolean;
   onRestore?: (id: string) => void;
 };
@@ -31,7 +39,15 @@ type EditorDraft = {
   title: string;
   html: string;
   tags: string[];
-  attachmentIds: string[];
+  attachmentKeys: string[];
+  newAttachments: CreateAttachmentInput[];
+  localAttachmentIds: string[];
+  remindAt: string | null;
+};
+
+type EditorAttachment = ReminderWithComputed["attachments"][number] & {
+  localId?: string;
+  localFile?: File;
 };
 
 const TEXT_COLOR_PRESETS = ["#111827", "#2563eb", "#c2410c", "#059669"] as const;
@@ -66,6 +82,31 @@ function htmlToPlainText(html: string): string {
     .replace(/<[^>]*>/g, "")
     .replace(/\u00a0/g, " ")
     .trim();
+}
+
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result ?? ""));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
+function makeLocalId() {
+  return Math.random().toString(36).slice(2);
+}
+
+function toLocalDatetimeValue(date: Date) {
+  const copy = new Date(date);
+  copy.setSeconds(0, 0);
+  return new Date(copy.getTime() - copy.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+}
+
+function splitLocalDatetime(value: string): { date: string; time: string } {
+  if (!value) return { date: "", time: "09:00" };
+  const [date, time = "09:00"] = value.split("T");
+  return { date, time: time.slice(0, 5) };
 }
 
 function getYouTubeVideoId(urlString: string | null | undefined): string | null {
@@ -131,7 +172,9 @@ export function ReminderCard({
   const [editorTitle, setEditorTitle] = useState(parsedNote.title);
   const [editorHtml, setEditorHtml] = useState(noteBodyHtml);
   const [editorTagState, setEditorTagState] = useState(tags);
-  const [editorAttachments, setEditorAttachments] = useState(reminder.attachments);
+  const [editorAttachments, setEditorAttachments] = useState<EditorAttachment[]>(reminder.attachments);
+  const [editorRemindAt, setEditorRemindAt] = useState(reminder.remindAt ? toLocalDatetimeValue(new Date(reminder.remindAt)) : "");
+  const [scheduleOpen, setScheduleOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [formatMenu, setFormatMenu] = useState<{ open: boolean; x: number; y: number }>({
     open: false,
@@ -140,6 +183,7 @@ export function ReminderCard({
   });
   const editorRef = useRef<HTMLDivElement>(null);
   const editorPanelRef = useRef<HTMLDivElement>(null);
+  const editorFileInputRef = useRef<HTMLInputElement>(null);
   const selectionRangeRef = useRef<Range | null>(null);
   const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -153,6 +197,8 @@ export function ReminderCard({
 
   const hasLeadingCheckbox = !compact && reminder.status !== "archived";
   const allAttachments = reminder.attachments;
+  const scheduleParts = useMemo(() => splitLocalDatetime(editorRemindAt), [editorRemindAt]);
+  const capacityRemaining = MAX_ATTACHMENTS - editorAttachments.length;
 
   function getAttachmentHref(attachment: ReminderWithComputed["attachments"][number]) {
     if (attachment.kind === "link" && attachment.url) return attachment.url;
@@ -177,8 +223,140 @@ export function ReminderCard({
     setEditorHtml(noteBodyHtml);
     setEditorTagState(tags);
     setEditorAttachments(reminder.attachments);
+    setEditorRemindAt(reminder.remindAt ? toLocalDatetimeValue(new Date(reminder.remindAt)) : "");
+    setScheduleOpen(false);
     setEditorClosing(false);
     setEditorOpen(true);
+  }
+
+  function setDatePart(dateValue: string) {
+    if (!dateValue) {
+      setEditorRemindAt("");
+      return;
+    }
+    const time = scheduleParts.time || "09:00";
+    setEditorRemindAt(`${dateValue}T${time}`);
+  }
+
+  function setTimePart(timeValue: string) {
+    const date = scheduleParts.date;
+    if (!date) return;
+    setEditorRemindAt(`${date}T${timeValue || "09:00"}`);
+  }
+
+  function setQuickPreset(preset: "1h" | "tomorrow" | "1w") {
+    const d = new Date();
+    if (preset === "1h") {
+      d.setHours(d.getHours() + 1);
+    } else if (preset === "tomorrow") {
+      d.setDate(d.getDate() + 1);
+      d.setHours(9, 0, 0, 0);
+    } else {
+      d.setDate(d.getDate() + 7);
+      d.setHours(9, 0, 0, 0);
+    }
+    setEditorRemindAt(toLocalDatetimeValue(d));
+    setScheduleOpen(false);
+  }
+
+  async function addFilesToEditor(files: FileList | File[]) {
+    const list = Array.from(files).slice(0, Math.max(0, capacityRemaining));
+    if (list.length === 0) return;
+    const next = await Promise.all(
+      list.map(async (file) => {
+        const isImage = file.type.startsWith("image/");
+        const previewImageUrl = isImage ? await fileToDataUrl(file) : null;
+        return {
+          id: `local-${makeLocalId()}`,
+          reminderId: reminder.id,
+          kind: isImage ? "image" : "file",
+          storagePath: null,
+          mimeType: file.type || null,
+          fileName: file.name,
+          fileSizeBytes: file.size,
+          url: null,
+          textContent: null,
+          previewTitle: file.name,
+          previewIconUrl: null,
+          previewImageUrl,
+          metadataStatus: "ready",
+          createdAt: new Date().toISOString(),
+          localId: makeLocalId(),
+          localFile: file
+        } satisfies EditorAttachment;
+      })
+    );
+    setEditorAttachments((prev) => [...prev, ...next].slice(0, MAX_ATTACHMENTS));
+  }
+
+  function addTextAttachmentToEditor(text: string) {
+    const trimmed = text.trim();
+    if (!trimmed || capacityRemaining <= 0) return;
+    const urls = extractUrlsFromText(trimmed);
+    if (urls.length > 0) {
+      const existingUrls = new Set(editorAttachments.filter((a) => a.kind === "link").map((a) => a.url));
+      const linkAttachments = urls
+        .filter((url) => !existingUrls.has(url))
+        .map((url) => ({
+          id: `local-${makeLocalId()}`,
+          reminderId: reminder.id,
+          kind: "link" as const,
+          storagePath: null,
+          mimeType: null,
+          fileName: null,
+          fileSizeBytes: null,
+          url,
+          textContent: null,
+          previewTitle: url,
+          previewIconUrl: null,
+          previewImageUrl: getYouTubePreviewUrl(url),
+          metadataStatus: "pending" as const,
+          createdAt: new Date().toISOString(),
+          localId: makeLocalId()
+        }));
+      setEditorAttachments((prev) => [...prev, ...linkAttachments].slice(0, MAX_ATTACHMENTS));
+      return;
+    }
+
+    const snippet: EditorAttachment = {
+      id: `local-${makeLocalId()}`,
+      reminderId: reminder.id,
+      kind: "text_snippet",
+      storagePath: null,
+      mimeType: "text/plain",
+      fileName: null,
+      fileSizeBytes: trimmed.length,
+      url: null,
+      textContent: trimmed,
+      previewTitle: trimmed.slice(0, 120),
+      previewIconUrl: null,
+      previewImageUrl: null,
+      metadataStatus: "ready",
+      createdAt: new Date().toISOString(),
+      localId: makeLocalId()
+    };
+    setEditorAttachments((prev) => [...prev, snippet].slice(0, MAX_ATTACHMENTS));
+  }
+
+  async function onEditorDrop(event: DragEvent<HTMLDivElement>) {
+    event.preventDefault();
+    if (event.dataTransfer.files?.length) await addFilesToEditor(event.dataTransfer.files);
+    const text = event.dataTransfer.getData("text/plain");
+    if (text) addTextAttachmentToEditor(text);
+  }
+
+  async function onEditorPaste(event: ClipboardEvent<HTMLDivElement>) {
+    const files = event.clipboardData.files;
+    if (files?.length) {
+      event.preventDefault();
+      await addFilesToEditor(files);
+      return;
+    }
+    const text = event.clipboardData.getData("text/plain");
+    if (isLikelyUrl(text)) {
+      event.preventDefault();
+      addTextAttachmentToEditor(text);
+    }
   }
 
   function applyFormatting(command: "bold" | "italic" | "underline" | "strikeThrough") {
@@ -282,8 +460,58 @@ export function ReminderCard({
       title: draft.title.trim(),
       html: sanitizeNoteHtml(draft.html),
       tags: Array.from(new Set(draft.tags.map((tag) => tag.toLowerCase()))).sort(),
-      attachmentIds: draft.attachmentIds
+      attachmentKeys: draft.attachmentKeys,
+      remindAt: draft.remindAt,
+      newAttachments: draft.newAttachments,
+      localAttachmentIds: draft.localAttachmentIds
     });
+  }
+
+  async function prepareNewEditorAttachments(draft: EditorDraft): Promise<CreateAttachmentInput[]> {
+    const prepared: CreateAttachmentInput[] = [];
+    for (const [index, item] of draft.newAttachments.entries()) {
+      if ((item.kind === "image" || item.kind === "file") && item.storagePath == null && item.fileName) {
+        const localId = draft.localAttachmentIds[index];
+        const attachment = editorAttachments.find((a) => a.localId === localId && a.localFile);
+        if (attachment?.localFile) {
+          const uploadResp = await fetch("/api/uploads", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              fileName: attachment.localFile.name,
+              mimeType: attachment.localFile.type || "application/octet-stream",
+              size: attachment.localFile.size
+            })
+          });
+          if (!uploadResp.ok) throw new Error("Upload preparation failed");
+          const uploadInfo = (await uploadResp.json()) as { storagePath: string; signedUploadUrl?: string | null };
+          if (uploadInfo.signedUploadUrl) {
+            const putResp = await fetch(uploadInfo.signedUploadUrl, {
+              method: "PUT",
+              headers: {
+                "content-type": attachment.localFile.type || "application/octet-stream",
+                "x-upsert": "false"
+              },
+              body: attachment.localFile
+            });
+            if (!putResp.ok) throw new Error("File upload failed");
+          }
+
+          prepared.push({
+            kind: item.kind,
+            storagePath: uploadInfo.storagePath,
+            mimeType: attachment.localFile.type || "application/octet-stream",
+            fileName: attachment.localFile.name,
+            fileSizeBytes: attachment.localFile.size,
+            previewImageUrl: item.kind === "image" ? attachment.previewImageUrl ?? null : null,
+            metadataStatus: "ready"
+          });
+          continue;
+        }
+      }
+      prepared.push(item);
+    }
+    return prepared;
   }
 
   async function persistDraft(draft: EditorDraft) {
@@ -298,14 +526,20 @@ export function ReminderCard({
     setSaving(true);
     try {
       const removeAttachmentIds = reminder.attachments
-        .filter((attachment) => !draft.attachmentIds.includes(attachment.id))
+        .filter((attachment) => !draft.attachmentKeys.includes(attachment.id))
         .map((attachment) => attachment.id);
       const extractedTags = extractTagsFromText([draft.title, htmlToPlainText(draft.html)].filter(Boolean).join("\n"));
       const mergedTags = Array.from(new Set([...(draft.tags ?? []), ...extractedTags]));
       const cleanedTitle = stripTagsFromText(draft.title);
       const cleanedHtml = sanitizeNoteHtml(stripTagsFromHtml(draft.html));
+      const createdAttachments = await prepareNewEditorAttachments(draft);
+      const remindAtIso = draft.remindAt ? new Date(draft.remindAt).toISOString() : null;
       await Promise.resolve(
-        onUpdateNote(reminder.id, serializeNote(cleanedTitle, cleanedHtml, mergedTags), removeAttachmentIds)
+        onUpdateNote(reminder.id, serializeNote(cleanedTitle, cleanedHtml, mergedTags), {
+          removeAttachmentIds,
+          attachments: createdAttachments,
+          remindAt: remindAtIso
+        })
       );
       lastSavedSnapshotRef.current = snapshot;
     } finally {
@@ -321,11 +555,29 @@ export function ReminderCard({
   }
 
   function currentDraft() {
+    const newLocalAttachments = editorAttachments.filter((attachment) => attachment.id.startsWith("local-"));
+    const newAttachments = newLocalAttachments.map<CreateAttachmentInput>((attachment) => ({
+        kind: attachment.kind,
+        storagePath: attachment.storagePath,
+        mimeType: attachment.mimeType,
+        fileName: attachment.fileName,
+        fileSizeBytes: attachment.fileSizeBytes,
+        url: attachment.url,
+        textContent: attachment.textContent,
+        previewTitle: attachment.previewTitle,
+        previewIconUrl: attachment.previewIconUrl,
+        previewImageUrl: attachment.previewImageUrl,
+        metadataStatus: attachment.metadataStatus
+      }));
+
     return {
       title: editorTitle,
       html: editorHtml,
       tags: editorTagState,
-      attachmentIds: editorAttachments.map((attachment) => attachment.id)
+      attachmentKeys: editorAttachments.map((attachment) => attachment.id),
+      newAttachments,
+      localAttachmentIds: newLocalAttachments.map((attachment) => attachment.localId ?? ""),
+      remindAt: editorRemindAt || null
     };
   }
 
@@ -390,7 +642,7 @@ export function ReminderCard({
         autosaveTimerRef.current = null;
       }
     };
-  }, [editorOpen, editorTitle, editorHtml, editorAttachments, editorTagState, onUpdateNote]);
+  }, [editorOpen, editorTitle, editorHtml, editorAttachments, editorTagState, editorRemindAt, onUpdateNote]);
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -692,17 +944,106 @@ export function ReminderCard({
               onMouseDown={(event) => event.stopPropagation()}
             >
           <div className="note-editor__header">
-            <motion.button
-              type="button"
-              className="icon-btn"
-              whileHover={{ scale: 1.04 }}
-              whileTap={{ scale: 0.96 }}
-              onClick={closeEditorWithAutosave}
-              aria-label="Close edit note"
-            >
-              ×
-            </motion.button>
+            <div className="note-editor__header-actions">
+              <motion.button
+                type="button"
+                className="icon-btn"
+                whileHover={{ scale: 1.04 }}
+                whileTap={{ scale: 0.96 }}
+                onClick={() => editorFileInputRef.current?.click()}
+                aria-label="Add attachment"
+                title="Add attachment"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path
+                    d="M16.5 6.5 9 14a3.5 3.5 0 1 0 5 5l7-7a5.5 5.5 0 1 0-7.8-7.8l-7.2 7.2"
+                    stroke="currentColor"
+                    strokeWidth="1.7"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </motion.button>
+              <Popover open={scheduleOpen} onOpenChange={setScheduleOpen}>
+                <PopoverTrigger asChild>
+                  <motion.button
+                    type="button"
+                    className="icon-btn"
+                    whileHover={{ scale: 1.04 }}
+                    whileTap={{ scale: 0.96 }}
+                    aria-label="Set reminder date and time"
+                    title="Set reminder date and time"
+                  >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                      <path
+                        d="M7 3v3M17 3v3M4 9h16M6 5h12a2 2 0 0 1 2 2v11a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V7a2 2 0 0 1 2-2Z"
+                        stroke="currentColor"
+                        strokeWidth="1.7"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  </motion.button>
+                </PopoverTrigger>
+                <PopoverContent side="bottom" align="end" sideOffset={8} className="schedule-popover">
+                  <div className="schedule-popover__header">
+                    <strong>Reminder time</strong>
+                    <button type="button" className="btn subtle" onClick={() => setEditorRemindAt("")}>
+                      Clear
+                    </button>
+                  </div>
+                  <div className="schedule-popover__grid">
+                    <label className="schedule-field schedule-field--date">
+                      <span>Date</span>
+                      <input type="date" value={scheduleParts.date} onChange={(e) => setDatePart(e.target.value)} />
+                    </label>
+                    <div className="schedule-popover__side">
+                      <label className="schedule-field">
+                        <span>Time</span>
+                        <input
+                          type="time"
+                          value={scheduleParts.time}
+                          onChange={(e) => setTimePart(e.target.value)}
+                          disabled={!scheduleParts.date}
+                        />
+                      </label>
+                    </div>
+                  </div>
+                  <div className="quick-presets quick-presets--in-popover" aria-label="Quick reminder presets">
+                    <button type="button" className="btn subtle" onClick={() => setQuickPreset("1h")}>
+                      In 1 hour
+                    </button>
+                    <button type="button" className="btn subtle" onClick={() => setQuickPreset("tomorrow")}>
+                      Tomorrow morning
+                    </button>
+                    <button type="button" className="btn subtle" onClick={() => setQuickPreset("1w")}>
+                      In a week
+                    </button>
+                  </div>
+                </PopoverContent>
+              </Popover>
+              <motion.button
+                type="button"
+                className="icon-btn"
+                whileHover={{ scale: 1.04 }}
+                whileTap={{ scale: 0.96 }}
+                onClick={closeEditorWithAutosave}
+                aria-label="Close edit note"
+              >
+                ×
+              </motion.button>
+            </div>
           </div>
+          <input
+            ref={editorFileInputRef}
+            type="file"
+            multiple
+            className="sr-only"
+            onChange={(e) => {
+              if (e.target.files) void addFilesToEditor(e.target.files);
+              e.target.value = "";
+            }}
+          />
           <div className="note-editor__body">
             <input
               className="note-editor__title"
@@ -719,6 +1060,9 @@ export function ReminderCard({
               role="textbox"
               data-placeholder="Write details..."
               onInput={(e) => setEditorHtml((e.target as HTMLDivElement).innerHTML)}
+              onDrop={(event) => void onEditorDrop(event)}
+              onDragOver={(event) => event.preventDefault()}
+              onPaste={(event) => void onEditorPaste(event)}
               onContextMenu={(event) => {
                 openFormatMenuFromSelection(event.clientX, event.clientY);
                 if (window.getSelection()?.toString().trim()) {

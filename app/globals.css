@@ -116,7 +116,7 @@ select {
 .top-bar__title {
   margin: 0;
   font-family: var(--font-display), var(--font-inter), "Segoe UI", sans-serif;
-  font-size: 1.72rem;
+  font-size: 2.1rem;
   font-weight: 400;
   letter-spacing: 0.02em;
   line-height: 1;
@@ -310,7 +310,7 @@ select {
   border-radius: 0;
   box-shadow: none;
   backdrop-filter: none;
-  padding: 4px 14px;
+  padding: 8px 14px;
   display: grid;
   gap: 8px;
   transition:
@@ -326,7 +326,7 @@ select {
 
 .reminder-card.compact {
   border-radius: 0;
-  padding: 4px 14px;
+  padding: 8px 14px;
   gap: 8px;
 }
 
@@ -338,7 +338,7 @@ select {
 
 .reminder-card__header h3 {
   margin: 0;
-  font-size: 24px;
+  font-size: 22px;
   font-weight: 500;
   line-height: 1.2;
 }
@@ -370,7 +370,7 @@ select {
 
 .reminder-card__header-main h3 {
   margin: 0;
-  font-size: 24px;
+  font-size: 22px;
   font-weight: 500;
   line-height: 1.2;
   white-space: nowrap;
@@ -1161,7 +1161,7 @@ select {
   min-height: 0;
   padding: 0 4px 1px;
   font-weight: 500;
-  font-size: 24px;
+  font-size: 22px;
   line-height: 1.2;
   letter-spacing: 0;
   background: transparent;
@@ -1398,6 +1398,12 @@ select {
   padding: 20px 20px 0;
   position: static;
   background: transparent;
+}
+
+.note-editor__header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .note-editor__body {

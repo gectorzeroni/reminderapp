@@ -7,29 +7,25 @@ import {
 } from "@/lib/constants";
 
 const attachmentKindSchema = z.enum(["link", "image", "file", "text_snippet"]);
+const reminderAttachmentSchema = z.object({
+  kind: attachmentKindSchema,
+  storagePath: z.string().optional().nullable(),
+  mimeType: z.string().optional().nullable(),
+  fileName: z.string().max(255).optional().nullable(),
+  fileSizeBytes: z.number().int().nonnegative().optional().nullable(),
+  url: z.string().url().optional().nullable(),
+  textContent: z.string().max(10000).optional().nullable(),
+  previewTitle: z.string().max(500).optional().nullable(),
+  previewIconUrl: z.string().url().optional().nullable(),
+  previewImageUrl: z.string().url().optional().nullable(),
+  metadataStatus: z.enum(["pending", "ready", "failed"]).optional()
+});
 
 export const createReminderSchema = z
   .object({
     note: z.string().trim().max(5000).optional().nullable(),
     remindAt: z.string().datetime().optional().nullable(),
-    attachments: z
-      .array(
-        z.object({
-          kind: attachmentKindSchema,
-          storagePath: z.string().optional().nullable(),
-          mimeType: z.string().optional().nullable(),
-          fileName: z.string().max(255).optional().nullable(),
-          fileSizeBytes: z.number().int().nonnegative().optional().nullable(),
-          url: z.string().url().optional().nullable(),
-          textContent: z.string().max(10000).optional().nullable(),
-          previewTitle: z.string().max(500).optional().nullable(),
-          previewIconUrl: z.string().url().optional().nullable(),
-          previewImageUrl: z.string().url().optional().nullable(),
-          metadataStatus: z.enum(["pending", "ready", "failed"]).optional()
-        })
-      )
-      .max(MAX_ATTACHMENTS)
-      .default([])
+    attachments: z.array(reminderAttachmentSchema).max(MAX_ATTACHMENTS).default([])
   })
   .superRefine((value, ctx) => {
     const hasNote = Boolean(value.note?.trim());
@@ -83,7 +79,25 @@ export const createReminderSchema = z
 export const updateReminderSchema = z.object({
   remindAt: z.string().datetime().nullable().optional(),
   note: z.string().trim().max(20000).nullable().optional(),
-  removeAttachmentIds: z.array(z.string().uuid()).max(MAX_ATTACHMENTS).optional()
+  removeAttachmentIds: z.array(z.string().uuid()).max(MAX_ATTACHMENTS).optional(),
+  attachments: z.array(reminderAttachmentSchema).max(MAX_ATTACHMENTS).optional()
+}).superRefine((value, ctx) => {
+  for (const [index, attachment] of (value.attachments ?? []).entries()) {
+    if (attachment.kind === "image" && (attachment.fileSizeBytes ?? 0) > MAX_IMAGE_BYTES) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Image is too large",
+        path: ["attachments", index, "fileSizeBytes"]
+      });
+    }
+    if (attachment.kind === "file" && (attachment.fileSizeBytes ?? 0) > MAX_FILE_BYTES) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "File is too large",
+        path: ["attachments", index, "fileSizeBytes"]
+      });
+    }
+  }
 });
 
 export const snoozeSchema = z

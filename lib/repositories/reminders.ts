@@ -350,13 +350,18 @@ async function updateReminderLocal(userId: string, reminderId: string, input: Up
   const store = getStore();
   const reminder = store.reminders.get(reminderId);
   if (!reminder || reminder.userId !== userId) return null;
+  const timestamp = nowIso();
   if ("remindAt" in input) reminder.remindAt = input.remindAt ?? null;
   if ("note" in input) reminder.note = input.note?.trim() || null;
+  if (input.attachments?.length) {
+    const nextAttachments = await enrichAttachmentsForCreate(reminderId, input.attachments, timestamp);
+    reminder.attachments = reminder.attachments.concat(nextAttachments);
+  }
   if (input.removeAttachmentIds?.length) {
     const toRemove = new Set(input.removeAttachmentIds);
     reminder.attachments = reminder.attachments.filter((attachment) => !toRemove.has(attachment.id));
   }
-  reminder.updatedAt = nowIso();
+  reminder.updatedAt = timestamp;
   if (reminder.status === "archived") {
     reminder.status = "upcoming";
     reminder.archiveReason = null;
@@ -563,6 +568,29 @@ async function updateReminderSupabase(userId: string, reminderId: string, input:
       .eq("reminder_id", reminderId)
       .in("id", input.removeAttachmentIds);
     if (deleteError) throw new Error(deleteError.message);
+  }
+
+  if (input.attachments?.length) {
+    const timestamp = nowIso();
+    const attachments = await enrichAttachmentsForCreate(reminderId, input.attachments, timestamp);
+    const { error: attachmentError } = await supabase.from("reminder_attachments").insert(
+      attachments.map((a) => ({
+        id: a.id,
+        reminder_id: a.reminderId,
+        kind: a.kind,
+        storage_path: a.storagePath,
+        mime_type: a.mimeType,
+        file_name: a.fileName,
+        file_size_bytes: a.fileSizeBytes,
+        url: a.url,
+        text_content: a.textContent,
+        preview_title: a.previewTitle,
+        preview_icon_url: a.previewIconUrl,
+        preview_image_url: a.previewImageUrl,
+        metadata_status: a.metadataStatus
+      }))
+    );
+    if (attachmentError) throw new Error(attachmentError.message);
   }
 
   return fetchReminderByIdSupabase(userId, reminderId);

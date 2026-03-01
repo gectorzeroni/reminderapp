@@ -22,7 +22,7 @@ import { parseStoredNote } from "@/lib/note";
 import { extractTagsFromText } from "@/lib/parse";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import { computeReminderState } from "@/lib/time";
-import type { Profile, Reminder, ReminderWithComputed } from "@/lib/types";
+import type { CreateAttachmentInput, Profile, Reminder, ReminderWithComputed } from "@/lib/types";
 
 type ArchiveFilter = "all" | "completed" | "auto";
 type AuthUserIdentity = { id: string; email: string | null; name: string | null } | null;
@@ -310,11 +310,15 @@ export function RemindersApp() {
     setArchive((prev) => prev.filter((r) => r.id !== id));
   }
 
-  async function updateReminderNote(id: string, note: string, removeAttachmentIds?: string[]) {
+  async function updateReminderNote(
+    id: string,
+    note: string,
+    options?: { removeAttachmentIds?: string[]; attachments?: CreateAttachmentInput[]; remindAt?: string | null }
+  ) {
     const res = await fetch(`/api/reminders/${id}`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ note, removeAttachmentIds })
+      body: JSON.stringify({ note, ...options })
     });
     if (!res.ok) return;
     const body = (await res.json()) as { reminder: Reminder };
