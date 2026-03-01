@@ -45,19 +45,31 @@ export function stripSpecificTagFromText(value: string, tag: string): string {
 }
 
 export function stripTagsFromHtml(html: string): string {
-  return html
-    .replace(/(^|[\s>])#[a-zA-Z0-9_-]+\b/g, "$1")
-    .replace(/[ \t]{2,}/g, " ")
-    .replace(/[ \t]+\n/g, "\n");
+  const parts = html.split(/(<[^>]+>)/g);
+  return parts
+    .map((part) => {
+      if (part.startsWith("<") && part.endsWith(">")) return part;
+      return part
+        .replace(/(^|\s)#[a-zA-Z0-9_-]+\b/g, "$1")
+        .replace(/[ \t]{2,}/g, " ")
+        .replace(/[ \t]+\n/g, "\n");
+    })
+    .join("");
 }
 
 export function stripSpecificTagFromHtml(html: string, tag: string): string {
   const safe = escapeRegExp(tag.toLowerCase());
-  const pattern = new RegExp(`(^|[\\s>])#${safe}\\b`, "gi");
-  return html
-    .replace(pattern, "$1")
-    .replace(/[ \t]{2,}/g, " ")
-    .replace(/[ \t]+\n/g, "\n");
+  const pattern = new RegExp(`(^|\\s)#${safe}\\b`, "gi");
+  const parts = html.split(/(<[^>]+>)/g);
+  return parts
+    .map((part) => {
+      if (part.startsWith("<") && part.endsWith(">")) return part;
+      return part
+        .replace(pattern, "$1")
+        .replace(/[ \t]{2,}/g, " ")
+        .replace(/[ \t]+\n/g, "\n");
+    })
+    .join("");
 }
 
 export function getDomainFaviconUrl(urlString: string): string | null {
