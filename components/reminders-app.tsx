@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation";
 import { startTransition, useEffect, useMemo, useRef, useState } from "react";
 import { PacmanLoader } from "react-spinners";
 import { FireworksBackground } from "@/components/animate-ui/components/backgrounds/fireworks";
-import { Dialog, DialogPanel } from "@/components/animate-ui/components/headless/dialog";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -146,6 +145,14 @@ export function RemindersApp() {
   useEffect(() => {
     if (!archiveOpen) return;
     void loadArchive();
+  }, [archiveOpen]);
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setArchiveOpen(false);
+    }
+    if (archiveOpen) window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
   }, [archiveOpen]);
 
   useEffect(() => {
@@ -573,61 +580,84 @@ export function RemindersApp() {
         )}
       </section>
 
-      <Dialog open={archiveOpen} onClose={setArchiveOpen} className="archive-dialog">
-        <DialogPanel from="bottom" className="archive-panel open p-0" showCloseButton={false}>
-          <div className="archive-panel__header">
-            <div>
-              <p className="eyebrow">History</p>
-              <h2>Archive</h2>
-            </div>
-            <button className="icon-btn large" onClick={() => setArchiveOpen(false)} aria-label="Close archive">
-              ×
-            </button>
-          </div>
-          <div className="archive-toolbar">
-            <select
-              value={archiveFilter}
-              onChange={(e) => {
-                const next = e.target.value as ArchiveFilter;
-                setArchiveFilter(next);
-                void loadArchive(next, archiveQuery);
+      <AnimatePresence initial={false} mode="wait">
+        {archiveOpen ? (
+          <div className="note-editor-overlay" role="dialog" aria-modal="true" aria-label="Archive">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.22, ease: "easeOut" }}
+              className="note-editor-backdrop"
+              onMouseDown={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                setArchiveOpen(false);
               }}
-            >
-              <option value="all">All</option>
-              <option value="completed">Completed</option>
-              <option value="auto">Auto-archived</option>
-            </select>
-            <input
-              value={archiveQuery}
-              onChange={(e) => {
-                const q = e.target.value;
-                setArchiveQuery(q);
-                void loadArchive(archiveFilter, q);
-              }}
-              placeholder="Search archive"
             />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.99, y: 12 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.99, y: 24 }}
+              transition={{ duration: 0.22, ease: "easeOut" }}
+              className="archive-panel p-0"
+              onMouseDown={(event) => event.stopPropagation()}
+            >
+              <div className="archive-panel__header">
+                <div>
+                  <p className="eyebrow">History</p>
+                  <h2>Archive</h2>
+                </div>
+                <button className="icon-btn large" onClick={() => setArchiveOpen(false)} aria-label="Close archive">
+                  ×
+                </button>
+              </div>
+              <div className="archive-toolbar">
+                <select
+                  value={archiveFilter}
+                  onChange={(e) => {
+                    const next = e.target.value as ArchiveFilter;
+                    setArchiveFilter(next);
+                    void loadArchive(next, archiveQuery);
+                  }}
+                >
+                  <option value="all">All</option>
+                  <option value="completed">Completed</option>
+                  <option value="auto">Auto-archived</option>
+                </select>
+                <input
+                  value={archiveQuery}
+                  onChange={(e) => {
+                    const q = e.target.value;
+                    setArchiveQuery(q);
+                    void loadArchive(archiveFilter, q);
+                  }}
+                  placeholder="Search archive"
+                />
+              </div>
+              {archivedComputed.length === 0 ? (
+                <p className="empty-state compact">No archived reminders yet.</p>
+              ) : (
+                <ul className="archive-list">
+                  {archivedComputed.map((reminder) => (
+                    <li key={reminder.id}>
+                      <ReminderCard
+                        reminder={reminder}
+                        compact
+                        onSnooze={snooze}
+                        onArchive={archiveReminder}
+                        onReschedule={rescheduleReminder}
+                        onUpdateNote={updateReminderNote}
+                        onRestore={restoreReminder}
+                      />
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </motion.div>
           </div>
-          {archivedComputed.length === 0 ? (
-            <p className="empty-state compact">No archived reminders yet.</p>
-          ) : (
-            <ul className="archive-list">
-              {archivedComputed.map((reminder) => (
-                <li key={reminder.id}>
-                  <ReminderCard
-                    reminder={reminder}
-                    compact
-                    onSnooze={snooze}
-                    onArchive={archiveReminder}
-                    onReschedule={rescheduleReminder}
-                    onUpdateNote={updateReminderNote}
-                    onRestore={restoreReminder}
-                  />
-                </li>
-              ))}
-            </ul>
-          )}
-        </DialogPanel>
-      </Dialog>
+        ) : null}
+      </AnimatePresence>
 
       <div className="bottom-right-controls">
         <motion.button

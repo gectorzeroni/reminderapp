@@ -3,6 +3,7 @@ const NOTE_PREFIX = "__later_note_v1__:";
 export type ParsedNote = {
   title: string;
   bodyHtml: string;
+  tags: string[];
   plainText: string;
 };
 
@@ -41,23 +42,28 @@ export function sanitizeNoteHtml(input: string): string {
   return html.trim();
 }
 
-export function serializeNote(title: string, bodyHtml: string): string {
+export function serializeNote(title: string, bodyHtml: string, tags: string[] = []): string {
   const safeTitle = title.trim();
   const safeBody = sanitizeNoteHtml(bodyHtml);
-  return `${NOTE_PREFIX}${JSON.stringify({ title: safeTitle, bodyHtml: safeBody })}`;
+  const safeTags = Array.from(new Set(tags.map((tag) => tag.trim().toLowerCase()).filter(Boolean)));
+  return `${NOTE_PREFIX}${JSON.stringify({ title: safeTitle, bodyHtml: safeBody, tags: safeTags })}`;
 }
 
 export function parseStoredNote(note: string | null | undefined): ParsedNote {
   const raw = note?.trim() ?? "";
-  if (!raw) return { title: "", bodyHtml: "", plainText: "" };
+  if (!raw) return { title: "", bodyHtml: "", tags: [], plainText: "" };
 
   if (raw.startsWith(NOTE_PREFIX)) {
     try {
-      const payload = JSON.parse(raw.slice(NOTE_PREFIX.length)) as { title?: string; bodyHtml?: string };
+      const payload = JSON.parse(raw.slice(NOTE_PREFIX.length)) as { title?: string; bodyHtml?: string; tags?: string[] };
       const title = (payload.title ?? "").trim();
       const bodyHtml = sanitizeNoteHtml(payload.bodyHtml ?? "");
-      const plainText = [title, stripHtml(bodyHtml)].filter(Boolean).join("\n").trim();
-      return { title, bodyHtml, plainText };
+      const tags = Array.from(new Set((payload.tags ?? []).map((tag) => tag.trim().toLowerCase()).filter(Boolean)));
+      const plainText = [title, stripHtml(bodyHtml), tags.map((tag) => `#${tag}`).join(" ")]
+        .filter(Boolean)
+        .join("\n")
+        .trim();
+      return { title, bodyHtml, tags, plainText };
     } catch {
       // fall through to legacy parsing
     }
@@ -68,6 +74,5 @@ export function parseStoredNote(note: string | null | undefined): ParsedNote {
   const legacyBody = lines.slice(1).join("\n").trim();
   const bodyHtml = textToHtml(legacyBody);
   const plainText = [legacyTitle, legacyBody].filter(Boolean).join("\n").trim();
-  return { title: legacyTitle, bodyHtml, plainText };
+  return { title: legacyTitle, bodyHtml, tags: [], plainText };
 }
-

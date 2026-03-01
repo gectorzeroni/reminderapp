@@ -1,18 +1,10 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
-import { Inter, Rubik_Burned } from "next/font/google";
+import "@fontsource/golos-text/index.css";
+import "@fontsource/inter/index.css";
+import "@fontsource/rubik-burned/index.css";
+import { AgentationOverlay } from "@/components/agentation-overlay";
 import "./globals.css";
-
-const inter = Inter({
-  subsets: ["latin"],
-  variable: "--font-inter"
-});
-
-const rubikBurned = Rubik_Burned({
-  subsets: ["latin"],
-  weight: "400",
-  variable: "--font-display"
-});
 
 export const metadata: Metadata = {
   title: "Later™",
@@ -24,7 +16,10 @@ export default function RootLayout({
 }: Readonly<{ children: ReactNode }>) {
   return (
     <html lang="en">
-      <body className={`${inter.variable} ${rubikBurned.variable}`}>{children}</body>
+      <body>
+        {children}
+        <AgentationOverlay />
+      </body>
     </html>
   );
 }

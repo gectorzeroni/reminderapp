@@ -3,13 +3,15 @@
 @tailwind utilities;
 
 :root {
-  --bg: #fafafa;
+  --font-inter: "Golos Text", "Inter Variable", "Inter";
+  --font-display: "Rubik Burned";
+  --bg: #f7f7f8;
   --bg-accent: none;
   --card: rgba(255, 255, 255, 0.78);
   --card-strong: rgba(255, 255, 255, 0.92);
   --stroke: rgba(36, 34, 28, 0.12);
-  --text: #201f1a;
-  --muted: #666256;
+  --text: #04051a;
+  --muted: rgba(4, 5, 26, 0.62);
   --danger: #b73333;
   --success: #11773a;
   --accent: #0b5cff;
@@ -100,7 +102,7 @@ select {
   bottom: -22px;
   height: 22px;
   pointer-events: none;
-  background: linear-gradient(to bottom, rgba(250, 250, 250, 1), rgba(250, 250, 250, 0));
+  background: linear-gradient(to bottom, rgba(247, 247, 248, 1), rgba(247, 247, 248, 0));
 }
 
 .top-bar__inner {
@@ -143,7 +145,7 @@ select {
 }
 
 .top-bar__search::placeholder {
-  color: rgba(32, 31, 26, 0.48);
+  color: rgba(4, 5, 26, 0.42);
 }
 
 .top-bar__search-shortcut {
@@ -327,7 +329,9 @@ select {
 
 .reminder-card__header h3 {
   margin: 0;
-  font-size: 1.08rem;
+  font-size: 24px;
+  font-weight: 500;
+  line-height: 1.2;
 }
 
 .reminder-card__header {
@@ -357,6 +361,9 @@ select {
 
 .reminder-card__header-main h3 {
   margin: 0;
+  font-size: 24px;
+  font-weight: 500;
+  line-height: 1.2;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -376,10 +383,23 @@ select {
 .reminder-card__note {
   margin: 0;
   color: #2c2a22;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .reminder-card.has-leading-check .reminder-card__note {
   margin-left: 36px;
+}
+
+.reminder-card.no-title.has-leading-check .reminder-card__note {
+  margin-left: 0;
+}
+
+.reminder-card__note > * {
+  margin: 0;
 }
 
 .rich-text {
@@ -420,7 +440,30 @@ select {
   color: #6a6660;
   font-size: 0.76rem;
   line-height: 1;
-  padding: 5px 9px;
+  padding: 7px 10px;
+}
+
+.tag-chip--editable {
+  gap: 6px;
+}
+
+.tag-chip__remove {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: 1;
+  padding: 0;
+  width: 14px;
+  height: 14px;
+  display: inline-grid;
+  place-items: center;
+  cursor: pointer;
+  opacity: 0.88;
+}
+
+.tag-chip__remove:hover {
+  opacity: 1;
 }
 
 .state-pill {
@@ -467,6 +510,31 @@ select {
   margin-left: 36px;
 }
 
+.attachment-list.is-carousel {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 10px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 4px;
+  scroll-snap-type: x proximity;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-x;
+}
+
+.attachment-list.is-carousel .reminder-attachment {
+  width: 400px;
+  min-width: 400px;
+  max-width: 400px;
+  flex: 0 0 400px;
+  scroll-snap-align: start;
+}
+
+.attachment-list.is-carousel .image-attachment-tile {
+  flex: 0 0 84px;
+  scroll-snap-align: start;
+}
+
 .archive-list {
   display: grid;
   gap: 0;
@@ -507,7 +575,7 @@ select {
   padding: 14px 16px;
   display: grid;
   grid-template-columns: auto 1fr;
-  align-items: center;
+  align-items: flex-start;
   gap: 12px;
   border: 1px solid rgba(36, 34, 28, 0.12);
   background: var(--bg);
@@ -529,11 +597,29 @@ select {
 .reminder-attachment__icon {
   width: 44px;
   height: 44px;
+  align-self: flex-start;
   border-radius: 10px;
   display: grid;
   place-items: center;
   background: rgba(17, 24, 39, 0.04);
   font-size: 1.05rem;
+}
+
+.reminder-attachment__media {
+  width: 116px;
+  height: 66px;
+  align-self: flex-start;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid rgba(36, 34, 28, 0.12);
+  background: rgba(17, 24, 39, 0.04);
+}
+
+.reminder-attachment__media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
 }
 
 .reminder-attachment__body {
@@ -909,7 +995,7 @@ select {
 }
 
 .archive-panel {
-  background: #fafafa;
+  background: var(--bg);
   border: 1px solid var(--stroke);
   border-radius: 22px;
   box-shadow: var(--shadow);
@@ -1026,9 +1112,9 @@ select {
   border: 1px solid var(--stroke);
   box-shadow: var(--shadow);
   border-radius: 22px;
-  padding: 10px 12px;
+  padding: 16px;
   display: grid;
-  gap: 8px;
+  gap: 2px;
   position: relative;
 }
 
@@ -1045,25 +1131,59 @@ select {
 .composer-title-input {
   width: 100%;
   border: 0;
-  min-height: 34px;
-  padding: 1px 4px;
-  font-weight: 600;
-  font-size: 1.02rem;
+  min-height: 0;
+  padding: 0 4px 1px;
+  font-weight: 500;
+  font-size: 24px;
+  line-height: 1.2;
+  letter-spacing: 0;
   background: transparent;
   outline: none;
+  margin: 0;
 }
 
 .composer-body-input {
   border: 0;
-  min-height: 62px;
-  padding: 1px 4px;
+  min-height: 1.35em;
+  padding: 0 4px;
+  line-height: 1.35;
   background: transparent;
   outline: none;
+  margin-bottom: 12px;
 }
 
 .composer-body-input:empty::before {
   content: attr(data-placeholder);
-  color: rgba(32, 31, 26, 0.48);
+  color: rgba(4, 5, 26, 0.42);
+}
+
+.composer-attachments {
+  display: grid;
+  gap: 10px;
+}
+
+.composer-attachments .attachment-list {
+  display: grid;
+  gap: 10px;
+}
+
+.composer-attachments .attachment-list.is-carousel {
+  display: flex;
+}
+
+.composer-attachments .reminder-attachment {
+  width: 100%;
+  grid-template-columns: auto 1fr auto;
+}
+
+.composer-attachments .image-attachment-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.composer-attachments .image-attachment-tile {
+  position: relative;
 }
 
 .composer-attach-icon {
@@ -1106,10 +1226,10 @@ select {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  min-height: 34px;
+  height: 40px;
   border: 1px dashed rgba(36, 34, 28, 0.24);
   border-radius: 999px;
-  padding: 6px 10px;
+  padding: 0 12px;
   background: #fff;
   color: var(--muted);
   font-size: 0.83rem;
@@ -1203,18 +1323,39 @@ select {
   backdrop-filter: blur(6px);
 }
 
+.note-editor-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 12px;
+}
+
+.note-editor-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.78);
+  backdrop-filter: blur(10px);
+}
+
 .note-editor-panel {
-  width: min(1080px, calc(100vw - 24px));
+  width: 900px;
+  min-height: 600px;
   max-height: min(78vh, 680px);
-  background: #fafafa;
+  background: var(--bg);
   border: 1px solid var(--stroke);
   border-radius: 18px;
   display: grid;
-  grid-template-rows: auto 1fr auto;
+  grid-template-rows: auto minmax(0, 1fr);
+  position: relative;
+  z-index: 1;
   overflow: hidden;
 }
 
 .note-editor-dialog [data-slot="dialog-panel"].note-editor-panel {
+  width: 900px !important;
+  max-width: 900px !important;
   top: 0 !important;
   right: 0 !important;
   bottom: 0 !important;
@@ -1226,46 +1367,60 @@ select {
   display: flex;
   justify-content: flex-end;
   align-items: center;
-  padding: 14px 20px 0;
+  padding: 20px 20px 0;
+  position: static;
+  background: transparent;
 }
 
 .note-editor__body {
-  padding: 12px 20px 16px;
+  padding: 20px 20px 36px;
   display: grid;
-  gap: 0;
-  overflow: auto;
+  grid-auto-rows: max-content;
+  align-content: start;
+  gap: 12px;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  position: relative;
 }
 
 .note-editor__title {
   width: 100%;
   border: 0;
-  min-height: 40px;
-  padding: 2px 4px;
+  min-height: 0;
+  height: auto;
+  line-height: 1.1;
+  padding: 0 4px;
   background: transparent;
   font-weight: 600;
   font-size: 32px;
   outline: none;
-  margin: 0 0 10px;
+  margin: 0;
 }
 
 .note-editor__content {
   border: 0;
-  min-height: 220px;
+  min-height: 1.6em;
   padding: 2px 4px;
   background: transparent;
   outline: none;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.note-editor__body > .note-editor__title,
+.note-editor__body > .note-editor__content,
+.note-editor__body > .tag-chip-list,
+.note-editor__body > .note-editor__attachments {
+  width: min(500px, 100%);
+  margin-left: auto;
+  margin-right: auto;
 }
 
 .note-editor__content:empty::before {
   content: attr(data-placeholder);
-  color: rgba(32, 31, 26, 0.48);
-}
-
-.note-editor__footer {
-  padding: 12px 20px 16px;
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
+  color: rgba(4, 5, 26, 0.42);
 }
 
 .note-editor__attachments {
@@ -1280,6 +1435,10 @@ select {
   gap: 10px;
 }
 
+.note-editor__attachments .attachment-list.is-carousel {
+  display: flex;
+}
+
 .note-editor__attachments .reminder-attachment {
   width: 100%;
   grid-template-columns: auto 1fr auto;
@@ -1287,6 +1446,7 @@ select {
 
 .note-editor-attachment__remove {
   flex-shrink: 0;
+  align-self: flex-start;
 }
 
 .note-editor__attachments .image-attachment-row {
@@ -1312,23 +1472,39 @@ select {
 .text-format-popover {
   position: fixed;
   transform: translate(-50%, -100%);
-  margin-top: -8px;
+  margin-top: -10px;
   z-index: 60;
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--stroke);
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: var(--shadow);
+  min-width: 196px;
+  animation: text-popover-in 140ms ease-out;
+}
+
+.text-format-popover__row {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 4px;
-  border: 1px solid var(--stroke);
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.98);
-  box-shadow: var(--shadow);
+}
+
+.text-format-popover__row--colors {
+  flex-wrap: wrap;
+}
+
+.text-format-popover__divider {
+  height: 1px;
+  background: rgba(36, 34, 28, 0.12);
 }
 
 .text-format-popover__item {
-  width: 30px;
-  height: 30px;
+  width: 32px;
+  height: 32px;
   border: 0;
-  border-radius: 8px;
+  border-radius: 10px;
   background: transparent;
   display: inline-grid;
   place-items: center;
@@ -1337,6 +1513,25 @@ select {
 
 .text-format-popover__item:hover {
   background: rgba(17, 24, 39, 0.08);
+}
+
+.text-format-popover__swatch {
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  border: 1px solid rgba(32, 31, 26, 0.16);
+  cursor: pointer;
+}
+
+@keyframes text-popover-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .schedule-popover__grid {

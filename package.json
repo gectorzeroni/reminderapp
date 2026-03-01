@@ -10,9 +10,13 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@fontsource/golos-text": "^5.2.8",
+    "@fontsource/inter": "^5.2.8",
+    "@fontsource/rubik-burned": "^5.2.7",
     "@headlessui/react": "^2.2.9",
     "@supabase/ssr": "^0.5.2",
     "@supabase/supabase-js": "^2.56.0",
+    "@tabler/icons-react": "^3.37.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^0.575.0",
@@ -30,6 +34,7 @@
     "@types/node": "^22.13.10",
     "@types/react": "^19.0.10",
     "@types/react-dom": "^19.0.4",
+    "agentation": "^2.2.1",
     "autoprefixer": "^10.4.27",
     "postcss": "^8.5.6",
     "tailwindcss": "^3.4.17",

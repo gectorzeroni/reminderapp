@@ -15,14 +15,49 @@ export function extractUrlsFromText(value: string): string[] {
 }
 
 export function extractTagsFromText(value: string): string[] {
-  const matches = value.match(/(^|\s)#([a-zA-Z0-9_-]+)/g) ?? [];
-  const tags = matches
-    .map((m) => {
-      const tag = m.trim().slice(1);
-      return tag.toLowerCase();
-    })
-    .filter(Boolean);
+  const matches = value.match(/#[a-zA-Z0-9_-]+/g) ?? [];
+  const tags = matches.map((m) => m.slice(1).toLowerCase()).filter(Boolean);
   return Array.from(new Set(tags));
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+export function stripTagsFromText(value: string): string {
+  return value
+    .replace(/(^|\s)#[a-zA-Z0-9_-]+\b/g, "$1")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+export function stripSpecificTagFromText(value: string, tag: string): string {
+  const safe = escapeRegExp(tag.toLowerCase());
+  const pattern = new RegExp(`(^|\\s)#${safe}\\b`, "gi");
+  return value
+    .replace(pattern, "$1")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+export function stripTagsFromHtml(html: string): string {
+  return html
+    .replace(/(^|[\s>])#[a-zA-Z0-9_-]+\b/g, "$1")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/[ \t]+\n/g, "\n");
+}
+
+export function stripSpecificTagFromHtml(html: string, tag: string): string {
+  const safe = escapeRegExp(tag.toLowerCase());
+  const pattern = new RegExp(`(^|[\\s>])#${safe}\\b`, "gi");
+  return html
+    .replace(pattern, "$1")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/[ \t]+\n/g, "\n");
 }
 
 export function getDomainFaviconUrl(urlString: string): string | null {

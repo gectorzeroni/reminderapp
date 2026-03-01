@@ -1,12 +1,20 @@
 "use client";
 
 import * as motion from "motion/react-client";
+import { AnimatePresence } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Dialog, DialogPanel } from "@/components/animate-ui/components/headless/dialog";
 import { Checkbox } from "@/components/animate-ui/components/radix/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/animate-ui/components/radix/popover";
-import { parseStoredNote, sanitizeNoteHtml, serializeNote, textToHtml } from "@/lib/note";
-import { extractTagsFromText, summarizeFileSize } from "@/lib/parse";
+import { parseStoredNote, sanitizeNoteHtml, serializeNote } from "@/lib/note";
+import { getTagChipStyle } from "@/lib/tag-colors";
+import {
+  extractTagsFromText,
+  stripSpecificTagFromHtml,
+  stripSpecificTagFromText,
+  stripTagsFromHtml,
+  stripTagsFromText,
+  summarizeFileSize
+} from "@/lib/parse";
 import type { ReminderWithComputed } from "@/lib/types";
 
 type Props = {
@@ -19,14 +27,18 @@ type Props = {
   onRestore?: (id: string) => void;
 };
 
-function fallbackTitle(reminder: ReminderWithComputed) {
-  const first = reminder.attachments[0];
-  if (!first) return "Reminder";
-  if (first.kind === "link") return "Link reminder";
-  if (first.kind === "image") return "Image reminder";
-  if (first.kind === "file") return "File reminder";
-  return "Text reminder";
-}
+type EditorDraft = {
+  title: string;
+  html: string;
+  tags: string[];
+  attachmentIds: string[];
+};
+
+const TEXT_COLOR_PRESETS = ["#111827", "#2563eb", "#c2410c", "#059669"] as const;
+const TEXT_GRADIENT_PRESETS = [
+  "linear-gradient(90deg, #2563eb 0%, #7c3aed 100%)",
+  "linear-gradient(90deg, #f97316 0%, #ef4444 100%)"
+] as const;
 
 function attachmentSummary(reminder: ReminderWithComputed) {
   return reminder.attachments.map((a) => {
@@ -96,16 +108,19 @@ export function ReminderCard({
   onRestore
 }: Props) {
   const parsedNote = parseStoredNote(reminder.note);
-  const title = parsedNote.title || fallbackTitle(reminder);
+  const title = parsedNote.title;
   const noteBodyHtml = parsedNote.bodyHtml;
-  const tags = extractTagsFromText(parsedNote.plainText);
+  const showInlineBody = !title && Boolean(noteBodyHtml);
+  const tags = parsedNote.tags.length ? parsedNote.tags : extractTagsFromText(parsedNote.plainText);
   const summaries = attachmentSummary(reminder);
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [isCompleting, setIsCompleting] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
-  const [editorTitle, setEditorTitle] = useState(parsedNote.title || title);
+  const [editorClosing, setEditorClosing] = useState(false);
+  const [editorTitle, setEditorTitle] = useState(parsedNote.title);
   const [editorHtml, setEditorHtml] = useState(noteBodyHtml);
+  const [editorTagState, setEditorTagState] = useState(tags);
   const [editorAttachments, setEditorAttachments] = useState(reminder.attachments);
   const [saving, setSaving] = useState(false);
   const [formatMenu, setFormatMenu] = useState<{ open: boolean; x: number; y: number }>({
@@ -114,15 +129,20 @@ export function ReminderCard({
     y: 0
   });
   const editorRef = useRef<HTMLDivElement>(null);
+  const editorPanelRef = useRef<HTMLDivElement>(null);
   const selectionRangeRef = useRef<Range | null>(null);
-  const editorTags = useMemo(
-    () => extractTagsFromText([editorTitle, htmlToPlainText(editorHtml)].filter(Boolean).join("\n")),
-    [editorTitle, editorHtml]
-  );
+  const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastSavedSnapshotRef = useRef("");
+  const pendingDraftRef = useRef<EditorDraft | null>(null);
+  const lastCloseAtRef = useRef(0);
+  const editorTags = useMemo(() => {
+    const fromText = extractTagsFromText([editorTitle, htmlToPlainText(editorHtml)].filter(Boolean).join("\n"));
+    return Array.from(new Set([...editorTagState, ...fromText]));
+  }, [editorTagState, editorTitle, editorHtml]);
 
   const hasLeadingCheckbox = !compact && reminder.status !== "archived";
-  const imageAttachments = reminder.attachments.filter((a) => a.kind === "image");
-  const nonImageAttachments = reminder.attachments.filter((a) => a.kind !== "image");
+  const allAttachments = reminder.attachments;
 
   function getAttachmentHref(attachment: ReminderWithComputed["attachments"][number]) {
     if (attachment.kind === "link" && attachment.url) return attachment.url;
@@ -141,9 +161,13 @@ export function ReminderCard({
 
   function openEditor() {
     if (compact || reminder.status === "archived" || !onUpdateNote) return;
-    setEditorTitle(parsedNote.title || title);
+    if (editorClosing) return;
+    if (Date.now() - lastCloseAtRef.current < 220) return;
+    setEditorTitle(parsedNote.title);
     setEditorHtml(noteBodyHtml);
+    setEditorTagState(tags);
     setEditorAttachments(reminder.attachments);
+    setEditorClosing(false);
     setEditorOpen(true);
   }
 
@@ -164,7 +188,54 @@ export function ReminderCard({
     setFormatMenu((prev) => ({ ...prev, open: false }));
   }
 
-  function openFormatMenuFromSelection(clientX: number, clientY: number) {
+  function applyTextColor(color: string) {
+    const editor = editorRef.current;
+    if (!editor) return;
+    const selection = window.getSelection();
+    editor.focus();
+    if (selectionRangeRef.current && selection) {
+      selection.removeAllRanges();
+      selection.addRange(selectionRangeRef.current);
+    }
+    document.execCommand("styleWithCSS", false, "true");
+    document.execCommand("foreColor", false, color);
+    if (selection?.rangeCount) {
+      selectionRangeRef.current = selection.getRangeAt(0).cloneRange();
+    }
+    setEditorHtml(editor.innerHTML);
+    setFormatMenu((prev) => ({ ...prev, open: false }));
+  }
+
+  function applyGradientText(gradient: string) {
+    const editor = editorRef.current;
+    if (!editor) return;
+    const selection = window.getSelection();
+    editor.focus();
+    if (selectionRangeRef.current && selection) {
+      selection.removeAllRanges();
+      selection.addRange(selectionRangeRef.current);
+    }
+    if (!selection || selection.rangeCount === 0 || selection.isCollapsed) return;
+    const range = selection.getRangeAt(0);
+    const span = document.createElement("span");
+    span.style.backgroundImage = gradient;
+    span.style.backgroundClip = "text";
+    (span.style as CSSStyleDeclaration & { webkitBackgroundClip?: string }).webkitBackgroundClip = "text";
+    span.style.color = "transparent";
+    (span.style as CSSStyleDeclaration & { webkitTextFillColor?: string }).webkitTextFillColor = "transparent";
+    const fragment = range.extractContents();
+    span.appendChild(fragment);
+    range.insertNode(span);
+    const newRange = document.createRange();
+    newRange.selectNodeContents(span);
+    selection.removeAllRanges();
+    selection.addRange(newRange);
+    selectionRangeRef.current = newRange.cloneRange();
+    setEditorHtml(editor.innerHTML);
+    setFormatMenu((prev) => ({ ...prev, open: false }));
+  }
+
+  function openFormatMenuFromSelection(clientX?: number, clientY?: number) {
     const editor = editorRef.current;
     const selection = window.getSelection();
     if (!editor || !selection || selection.rangeCount === 0 || selection.isCollapsed) return;
@@ -172,26 +243,146 @@ export function ReminderCard({
     const range = selection.getRangeAt(0);
     if (!editor.contains(range.commonAncestorContainer)) return;
     selectionRangeRef.current = range.cloneRange();
-    setFormatMenu({ open: true, x: clientX, y: clientY });
+    if (typeof clientX === "number" && typeof clientY === "number") {
+      setFormatMenu({ open: true, x: clientX, y: clientY });
+      return;
+    }
+    const rect = range.getBoundingClientRect();
+    const x = rect.left + rect.width / 2;
+    const y = rect.top;
+    setFormatMenu({ open: true, x, y });
   }
 
-  async function saveEditor() {
-    if (!onUpdateNote || saving) return;
-    const plainBody = htmlToPlainText(editorHtml);
-    if (!editorTitle.trim() || !plainBody.trim()) return;
+  function snapshotDraft(draft: EditorDraft) {
+    return JSON.stringify({
+      title: draft.title.trim(),
+      html: sanitizeNoteHtml(draft.html),
+      tags: Array.from(new Set(draft.tags.map((tag) => tag.toLowerCase()))).sort(),
+      attachmentIds: draft.attachmentIds
+    });
+  }
+
+  async function persistDraft(draft: EditorDraft) {
+    if (!onUpdateNote) return;
+    const snapshot = snapshotDraft(draft);
+    if (snapshot === lastSavedSnapshotRef.current) return;
+    if (saving) {
+      pendingDraftRef.current = draft;
+      return;
+    }
+
     setSaving(true);
     try {
       const removeAttachmentIds = reminder.attachments
-        .filter((attachment) => !editorAttachments.some((current) => current.id === attachment.id))
+        .filter((attachment) => !draft.attachmentIds.includes(attachment.id))
         .map((attachment) => attachment.id);
+      const extractedTags = extractTagsFromText([draft.title, htmlToPlainText(draft.html)].filter(Boolean).join("\n"));
+      const mergedTags = Array.from(new Set([...(draft.tags ?? []), ...extractedTags]));
+      const cleanedTitle = stripTagsFromText(draft.title);
+      const cleanedHtml = sanitizeNoteHtml(stripTagsFromHtml(draft.html));
       await Promise.resolve(
-        onUpdateNote(reminder.id, serializeNote(editorTitle, sanitizeNoteHtml(editorHtml)), removeAttachmentIds)
+        onUpdateNote(reminder.id, serializeNote(cleanedTitle, cleanedHtml, mergedTags), removeAttachmentIds)
       );
-      setEditorOpen(false);
+      lastSavedSnapshotRef.current = snapshot;
     } finally {
       setSaving(false);
+      if (pendingDraftRef.current) {
+        const next = pendingDraftRef.current;
+        pendingDraftRef.current = null;
+        if (snapshotDraft(next) !== lastSavedSnapshotRef.current) {
+          void persistDraft(next);
+        }
+      }
     }
   }
+
+  function currentDraft() {
+    return {
+      title: editorTitle,
+      html: editorHtml,
+      tags: editorTagState,
+      attachmentIds: editorAttachments.map((attachment) => attachment.id)
+    };
+  }
+
+  function flushAutosave() {
+    if (autosaveTimerRef.current) {
+      clearTimeout(autosaveTimerRef.current);
+      autosaveTimerRef.current = null;
+    }
+    void persistDraft(currentDraft());
+  }
+
+  function closeEditorWithAutosave() {
+    if (!editorOpen || editorClosing) return;
+    lastCloseAtRef.current = Date.now();
+    flushAutosave();
+    setEditorClosing(true);
+    if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+    closeTimerRef.current = setTimeout(() => {
+      setEditorOpen(false);
+      setEditorClosing(false);
+      closeTimerRef.current = null;
+    }, 220);
+  }
+
+  useEffect(() => {
+    if (!editorOpen) return;
+    const editor = editorRef.current;
+    if (!editor) return;
+    const next = editorHtml || "";
+    if (editor.innerHTML !== next) {
+      editor.innerHTML = next;
+    }
+  }, [editorOpen]);
+
+  useEffect(() => {
+    if (!editorOpen) return;
+    lastSavedSnapshotRef.current = snapshotDraft(currentDraft());
+    pendingDraftRef.current = null;
+    return () => {
+      if (autosaveTimerRef.current) {
+        clearTimeout(autosaveTimerRef.current);
+        autosaveTimerRef.current = null;
+      }
+      if (closeTimerRef.current) {
+        clearTimeout(closeTimerRef.current);
+        closeTimerRef.current = null;
+      }
+    };
+  }, [editorOpen, reminder.id]);
+
+  useEffect(() => {
+    if (!editorOpen || !onUpdateNote) return;
+    const draft = currentDraft();
+    if (snapshotDraft(draft) === lastSavedSnapshotRef.current) return;
+    if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+    autosaveTimerRef.current = setTimeout(() => {
+      void persistDraft(draft);
+    }, 500);
+    return () => {
+      if (autosaveTimerRef.current) {
+        clearTimeout(autosaveTimerRef.current);
+        autosaveTimerRef.current = null;
+      }
+    };
+  }, [editorOpen, editorTitle, editorHtml, editorAttachments, editorTagState, onUpdateNote]);
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") closeEditorWithAutosave();
+    }
+    if (editorOpen) {
+      document.body.style.overflow = "hidden";
+      window.addEventListener("keydown", onKeyDown);
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => {
+      document.body.style.overflow = "";
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [editorOpen]);
 
   useEffect(() => {
     function closeFormatMenu(event: Event) {
@@ -218,8 +409,8 @@ export function ReminderCard({
 
   return (
     <>
-      <article
-        className={`reminder-card ${compact ? "compact" : ""} ${isCompleting ? "is-completing" : ""} ${menuOpen ? "menu-open" : ""} ${hasLeadingCheckbox ? "has-leading-check" : ""}`}
+      <motion.article
+        className={`reminder-card ${compact ? "compact" : ""} ${isCompleting ? "is-completing" : ""} ${menuOpen ? "menu-open" : ""} ${hasLeadingCheckbox ? "has-leading-check" : ""} ${title ? "" : "no-title"}`}
         onClick={(event) => {
           if (isInteractiveTarget(event.target)) return;
           openEditor();
@@ -261,7 +452,10 @@ export function ReminderCard({
                     : ""}
                 {reminder.remindAt ? ` · ${formatWhen(reminder.remindAt)}` : ""}
               </p>
-              <h3>{title}</h3>
+              {title ? <h3>{title}</h3> : null}
+              {showInlineBody ? (
+                <div className="reminder-card__note rich-text" dangerouslySetInnerHTML={{ __html: noteBodyHtml }} />
+              ) : null}
             </div>
           </div>
           <div className="reminder-card__header-side">
@@ -348,26 +542,30 @@ export function ReminderCard({
           </div>
         </div>
 
-        {noteBodyHtml ? (
+        {noteBodyHtml && !showInlineBody ? (
           <div className="reminder-card__note rich-text" dangerouslySetInnerHTML={{ __html: noteBodyHtml }} />
         ) : null}
 
         {tags.length > 0 ? (
           <div className="tag-chip-list" aria-label="Reminder tags">
             {tags.map((tag) => (
-              <span key={`${reminder.id}-${tag}`} className="tag-chip">
+              <span key={`${reminder.id}-${tag}`} className="tag-chip" style={getTagChipStyle(tag)}>
                 #{tag}
               </span>
             ))}
           </div>
         ) : null}
 
-        {nonImageAttachments.length > 0 ? (
-          <ul className="attachment-list">
-            {nonImageAttachments.map((attachment) => (
+        {allAttachments.length > 0 ? (
+          <ul className={`attachment-list ${allAttachments.length > 1 ? "is-carousel" : ""}`}>
+            {allAttachments.map((attachment) => (
               <li
                 key={attachment.id}
-                className={`attachment-chip reminder-attachment ${getAttachmentHref(attachment) ? "is-clickable" : ""}`}
+                className={
+                  attachment.kind === "image"
+                    ? `image-attachment-tile ${getAttachmentHref(attachment) ? "is-clickable" : ""}`
+                    : `attachment-chip reminder-attachment ${getAttachmentHref(attachment) ? "is-clickable" : ""}`
+                }
                 onClick={() => {
                   const href = getAttachmentHref(attachment);
                   if (href) openAttachment(href);
@@ -384,26 +582,34 @@ export function ReminderCard({
               >
                 {attachment.kind === "link" ? (
                   <>
-                    <div className="reminder-attachment__icon">
-                      {attachment.previewIconUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={attachment.previewIconUrl} alt="" width={22} height={22} />
-                      ) : (
-                        <span aria-hidden="true">🔗</span>
-                      )}
-                    </div>
+                    {getYouTubePreviewUrl(attachment.url) ? (
+                      <div className="reminder-attachment__media">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={getYouTubePreviewUrl(attachment.url) ?? ""} alt="YouTube video preview" />
+                      </div>
+                    ) : (
+                      <div className="reminder-attachment__icon">
+                        {attachment.previewIconUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={attachment.previewIconUrl} alt="" width={22} height={22} />
+                        ) : (
+                          <span aria-hidden="true">🔗</span>
+                        )}
+                      </div>
+                    )}
                     <div className="reminder-attachment__body">
                       <span>{attachment.previewTitle || attachment.url || "Link"}</span>
                       {attachment.url ? <small>{attachment.url}</small> : null}
-                      {getYouTubePreviewUrl(attachment.url) ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={getYouTubePreviewUrl(attachment.url) ?? ""}
-                          alt="YouTube video preview"
-                          className="reminder-attachment__preview"
-                        />
-                      ) : null}
                     </div>
+                  </>
+                ) : attachment.kind === "image" ? (
+                  <>
+                    {attachment.previewImageUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={attachment.previewImageUrl} alt="" className="image-attachment-tile__img" />
+                    ) : (
+                      <span aria-hidden="true">🖼️</span>
+                    )}
                   </>
                 ) : attachment.kind === "file" ? (
                   <>
@@ -432,38 +638,6 @@ export function ReminderCard({
           </ul>
         ) : null}
 
-        {imageAttachments.length > 0 ? (
-          <ul className={`image-attachment-row ${hasLeadingCheckbox ? "with-leading-check" : ""}`}>
-            {imageAttachments.map((attachment) => {
-              const href = getAttachmentHref(attachment);
-              return (
-                <li
-                  key={attachment.id}
-                  className={`image-attachment-tile ${href ? "is-clickable" : ""}`}
-                  onClick={() => {
-                    if (href) openAttachment(href);
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key !== "Enter" && event.key !== " ") return;
-                    if (!href) return;
-                    event.preventDefault();
-                    openAttachment(href);
-                  }}
-                  role={href ? "link" : undefined}
-                  tabIndex={href ? 0 : undefined}
-                >
-                  {attachment.previewImageUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={attachment.previewImageUrl} alt="" className="image-attachment-tile__img" />
-                  ) : (
-                    <span aria-hidden="true">🖼️</span>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-        ) : null}
-
         {compact && reminder.status === "archived" && onRestore ? (
           <div className="reminder-actions">
             <button onClick={() => onRestore(reminder.id)} className="btn">
@@ -475,17 +649,37 @@ export function ReminderCard({
         {compact && summaries.length > 0 ? (
           <p className="archive-summary">{summaries.slice(0, 2).join(" · ")}</p>
         ) : null}
-      </article>
+      </motion.article>
 
-      <Dialog open={editorOpen} onClose={setEditorOpen} className="note-editor-dialog">
-        <DialogPanel className="note-editor-panel p-0" showCloseButton={false}>
+      <AnimatePresence initial={false} mode="wait">
+        {editorOpen ? (
+          <div className="note-editor-overlay" role="dialog" aria-modal="true" aria-label="Edit reminder">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: editorClosing ? 0 : 1 }}
+              transition={{ duration: 0.22, ease: "easeOut" }}
+              className="note-editor-backdrop"
+              onMouseDown={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                closeEditorWithAutosave();
+              }}
+            />
+            <motion.div
+              ref={editorPanelRef}
+              initial={{ opacity: 0, scale: 0.99, y: 12 }}
+              animate={editorClosing ? { opacity: 0, y: 24, scale: 0.99 } : { opacity: 1, y: 0, scale: 1 }}
+              transition={{ duration: 0.22, ease: "easeOut" }}
+              className="note-editor-panel p-0"
+              onMouseDown={(event) => event.stopPropagation()}
+            >
           <div className="note-editor__header">
             <motion.button
               type="button"
               className="icon-btn"
               whileHover={{ scale: 1.04 }}
               whileTap={{ scale: 0.96 }}
-              onClick={() => setEditorOpen(false)}
+              onClick={closeEditorWithAutosave}
               aria-label="Close edit note"
             >
               ×
@@ -513,50 +707,96 @@ export function ReminderCard({
                   event.preventDefault();
                 }
               }}
-              dangerouslySetInnerHTML={{ __html: editorHtml || textToHtml("") }}
             />
             {formatMenu.open ? (
               <div className="text-format-popover" style={{ left: formatMenu.x, top: formatMenu.y }} role="menu">
-                <button
-                  type="button"
-                  className="text-format-popover__item"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => applyFormatting("bold")}
-                >
-                  <strong>B</strong>
-                </button>
-                <button
-                  type="button"
-                  className="text-format-popover__item"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => applyFormatting("italic")}
-                >
-                  <em>I</em>
-                </button>
-                <button
-                  type="button"
-                  className="text-format-popover__item"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => applyFormatting("underline")}
-                >
-                  <u>U</u>
-                </button>
-                <button
-                  type="button"
-                  className="text-format-popover__item"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => applyFormatting("strikeThrough")}
-                >
-                  <s>S</s>
-                </button>
+                <div className="text-format-popover__row">
+                  <button
+                    type="button"
+                    className="text-format-popover__item"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => applyFormatting("bold")}
+                  >
+                    <strong>B</strong>
+                  </button>
+                  <button
+                    type="button"
+                    className="text-format-popover__item"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => applyFormatting("italic")}
+                  >
+                    <em>I</em>
+                  </button>
+                  <button
+                    type="button"
+                    className="text-format-popover__item"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => applyFormatting("underline")}
+                  >
+                    <u>U</u>
+                  </button>
+                  <button
+                    type="button"
+                    className="text-format-popover__item"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => applyFormatting("strikeThrough")}
+                  >
+                    <s>S</s>
+                  </button>
+                </div>
+                <div className="text-format-popover__divider" />
+                <div className="text-format-popover__row text-format-popover__row--colors">
+                  {TEXT_COLOR_PRESETS.map((color) => (
+                    <button
+                      key={color}
+                      type="button"
+                      className="text-format-popover__swatch"
+                      style={{ background: color }}
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => applyTextColor(color)}
+                      aria-label={`Text color ${color}`}
+                    />
+                  ))}
+                  {TEXT_GRADIENT_PRESETS.map((gradient) => (
+                    <button
+                      key={gradient}
+                      type="button"
+                      className="text-format-popover__swatch"
+                      style={{ backgroundImage: gradient }}
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => applyGradientText(gradient)}
+                      aria-label="Gradient text"
+                    />
+                  ))}
+                </div>
               </div>
             ) : null}
 
             {editorTags.length > 0 ? (
               <div className="tag-chip-list" aria-label="Note tags">
                 {editorTags.map((tag) => (
-                  <span key={`${reminder.id}-edit-${tag}`} className="tag-chip">
-                    #{tag}
+                  <span
+                    key={`${reminder.id}-edit-${tag}`}
+                    className="tag-chip tag-chip--editable"
+                    style={getTagChipStyle(tag)}
+                  >
+                    <span>#{tag}</span>
+                    <button
+                      type="button"
+                      className="tag-chip__remove"
+                      aria-label={`Remove tag ${tag}`}
+                      onClick={() => {
+                        setEditorTagState((prev) => prev.filter((item) => item !== tag));
+                        setEditorTitle((prev) => stripSpecificTagFromText(prev, tag));
+                        setEditorHtml((prev) => {
+                          const next = stripSpecificTagFromHtml(prev, tag);
+                          if (editorRef.current) editorRef.current.innerHTML = next;
+                          return next;
+                        });
+                      }}
+                    >
+                      ×
+                    </button>
                   </span>
                 ))}
               </div>
@@ -564,13 +804,17 @@ export function ReminderCard({
 
             {editorAttachments.length > 0 ? (
               <div className="note-editor__attachments">
-                <ul className="attachment-list">
-                  {editorAttachments
-                    .filter((attachment) => attachment.kind !== "image")
-                    .map((attachment) => (
+                <ul
+                  className={`attachment-list ${editorAttachments.length > 1 ? "is-carousel" : ""}`}
+                >
+                  {editorAttachments.map((attachment) => (
                       <li
                         key={`${reminder.id}-edit-attachment-${attachment.id}`}
-                        className={`attachment-chip reminder-attachment ${getAttachmentHref(attachment) ? "is-clickable" : ""}`}
+                        className={
+                          attachment.kind === "image"
+                            ? `image-attachment-tile ${getAttachmentHref(attachment) ? "is-clickable" : ""}`
+                            : `attachment-chip reminder-attachment ${getAttachmentHref(attachment) ? "is-clickable" : ""}`
+                        }
                         onClick={() => {
                           const href = getAttachmentHref(attachment);
                           if (href) openAttachment(href);
@@ -587,26 +831,34 @@ export function ReminderCard({
                       >
                         {attachment.kind === "link" ? (
                           <>
-                            <div className="reminder-attachment__icon">
-                              {attachment.previewIconUrl ? (
-                                // eslint-disable-next-line @next/next/no-img-element
-                                <img src={attachment.previewIconUrl} alt="" width={22} height={22} />
-                              ) : (
-                                <span aria-hidden="true">🔗</span>
-                              )}
-                            </div>
+                            {getYouTubePreviewUrl(attachment.url) ? (
+                              <div className="reminder-attachment__media">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img src={getYouTubePreviewUrl(attachment.url) ?? ""} alt="YouTube video preview" />
+                              </div>
+                            ) : (
+                              <div className="reminder-attachment__icon">
+                                {attachment.previewIconUrl ? (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img src={attachment.previewIconUrl} alt="" width={22} height={22} />
+                                ) : (
+                                  <span aria-hidden="true">🔗</span>
+                                )}
+                              </div>
+                            )}
                             <div className="reminder-attachment__body">
                               <span>{attachment.previewTitle || attachment.url || "Link"}</span>
                               {attachment.url ? <small>{attachment.url}</small> : null}
-                              {getYouTubePreviewUrl(attachment.url) ? (
-                                // eslint-disable-next-line @next/next/no-img-element
-                                <img
-                                  src={getYouTubePreviewUrl(attachment.url) ?? ""}
-                                  alt="YouTube video preview"
-                                  className="reminder-attachment__preview"
-                                />
-                              ) : null}
                             </div>
+                          </>
+                        ) : attachment.kind === "image" ? (
+                          <>
+                            {attachment.previewImageUrl ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={attachment.previewImageUrl} alt="" className="image-attachment-tile__img" />
+                            ) : (
+                              <span aria-hidden="true">🖼️</span>
+                            )}
                           </>
                         ) : attachment.kind === "file" ? (
                           <>
@@ -632,87 +884,25 @@ export function ReminderCard({
                         )}
                         <button
                           type="button"
-                          className="icon-btn note-editor-attachment__remove"
+                          className={`icon-btn ${attachment.kind === "image" ? "note-editor-image__remove" : "note-editor-attachment__remove"}`}
                           onClick={(event) => {
                             event.stopPropagation();
                             setEditorAttachments((prev) => prev.filter((item) => item.id !== attachment.id));
                           }}
-                          aria-label="Remove attachment"
+                          aria-label={attachment.kind === "image" ? "Remove image attachment" : "Remove attachment"}
                         >
                           ×
                         </button>
                       </li>
                     ))}
                 </ul>
-
-                <ul className="image-attachment-row">
-                  {editorAttachments
-                    .filter((attachment) => attachment.kind === "image")
-                    .map((attachment) => {
-                      const href = getAttachmentHref(attachment);
-                      return (
-                        <li
-                          key={`${reminder.id}-edit-image-${attachment.id}`}
-                          className={`image-attachment-tile ${href ? "is-clickable" : ""}`}
-                          onClick={() => {
-                            if (href) openAttachment(href);
-                          }}
-                          onKeyDown={(event) => {
-                            if (event.key !== "Enter" && event.key !== " ") return;
-                            if (!href) return;
-                            event.preventDefault();
-                            openAttachment(href);
-                          }}
-                          role={href ? "link" : undefined}
-                          tabIndex={href ? 0 : undefined}
-                        >
-                          {attachment.previewImageUrl ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img src={attachment.previewImageUrl} alt="" className="image-attachment-tile__img" />
-                          ) : (
-                            <span aria-hidden="true">🖼️</span>
-                          )}
-                          <button
-                            type="button"
-                            className="icon-btn note-editor-image__remove"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              setEditorAttachments((prev) => prev.filter((item) => item.id !== attachment.id));
-                            }}
-                            aria-label="Remove image attachment"
-                          >
-                            ×
-                          </button>
-                        </li>
-                      );
-                    })}
-                </ul>
               </div>
             ) : null}
           </div>
-          <div className="note-editor__footer">
-            <motion.button
-              type="button"
-              className="btn"
-              whileHover={{ scale: 1.04 }}
-              whileTap={{ scale: 0.96 }}
-              onClick={() => setEditorOpen(false)}
-            >
-              Cancel
-            </motion.button>
-            <motion.button
-              type="button"
-              className="btn primary"
-              whileHover={saving ? undefined : { scale: 1.04 }}
-              whileTap={saving ? undefined : { scale: 0.96 }}
-              onClick={() => void saveEditor()}
-              disabled={saving}
-            >
-              {saving ? "Saving..." : "Save"}
-            </motion.button>
+            </motion.div>
           </div>
-        </DialogPanel>
-      </Dialog>
+        ) : null}
+      </AnimatePresence>
     </>
   );
 }

@@ -10,7 +10,12 @@ export function SignInClient() {
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [demoLoading, setDemoLoading] = useState(false);
   const params = useSearchParams();
+  const canUseLocalDemo =
+    process.env.NODE_ENV !== "production" &&
+    typeof window !== "undefined" &&
+    (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -39,6 +44,21 @@ export function SignInClient() {
       setError(e instanceof Error ? e.message : "Failed to send magic link");
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function handleDemoLogin() {
+    setError(null);
+    setStatus(null);
+    setDemoLoading(true);
+    try {
+      const res = await fetch("/api/dev/demo-login", { method: "POST" });
+      const body = (await res.json()) as { error?: string };
+      if (!res.ok) throw new Error(body.error || "Failed to enable demo session");
+      window.location.href = "/";
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to enable demo session");
+      setDemoLoading(false);
     }
   }
 
@@ -83,6 +103,26 @@ export function SignInClient() {
           {submitting ? "Sending..." : "Send magic link"}
         </motion.button>
       </form>
+
+      {canUseLocalDemo ? (
+        <motion.button
+          type="button"
+          disabled={demoLoading}
+          whileHover={demoLoading ? undefined : { scale: 1.04 }}
+          whileTap={demoLoading ? undefined : { scale: 0.96 }}
+          onClick={() => void handleDemoLogin()}
+          style={{
+            minHeight: 40,
+            borderRadius: 999,
+            border: "1px solid rgba(0,0,0,0.16)",
+            background: "#fff",
+            color: "#201f1a",
+            cursor: "pointer"
+          }}
+        >
+          {demoLoading ? "Opening demo..." : "Continue as demo (localhost only)"}
+        </motion.button>
+      ) : null}
 
       {status ? <p style={{ color: "#11773a", margin: 0 }}>{status}</p> : null}
       {error ? <p style={{ color: "#b73333", margin: 0 }}>{error}</p> : null}
