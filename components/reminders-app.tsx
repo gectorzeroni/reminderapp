@@ -613,27 +613,87 @@ export function RemindersApp() {
                 </button>
               </div>
               <div className="archive-toolbar">
-                <select
-                  value={archiveFilter}
-                  onChange={(e) => {
-                    const next = e.target.value as ArchiveFilter;
-                    setArchiveFilter(next);
-                    void loadArchive(next, archiveQuery);
-                  }}
-                >
-                  <option value="all">All</option>
-                  <option value="completed">Completed</option>
-                  <option value="auto">Auto-archived</option>
-                </select>
-                <input
-                  value={archiveQuery}
-                  onChange={(e) => {
-                    const q = e.target.value;
-                    setArchiveQuery(q);
-                    void loadArchive(archiveFilter, q);
-                  }}
-                  placeholder="Search archive"
-                />
+                <div className="archive-toolbar__search-wrap">
+                  <input
+                    value={archiveQuery}
+                    onChange={(e) => {
+                      const q = e.target.value;
+                      setArchiveQuery(q);
+                      void loadArchive(archiveFilter, q);
+                    }}
+                    placeholder="Search archive"
+                    className="top-bar__search archive-toolbar__search"
+                    aria-label="Search archive reminders"
+                  />
+                </div>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <motion.button
+                      type="button"
+                      className="icon-btn top-bar__icon-btn archive-toolbar__icon-btn"
+                      aria-label="Filter archive"
+                      title="Filter archive"
+                      whileHover={{ scale: 1.12 }}
+                      whileTap={{ scale: 0.9 }}
+                    >
+                      <svg
+                        width="14"
+                        height="14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        xmlns="http://www.w3.org/2000/svg"
+                        aria-hidden="true"
+                      >
+                        <path
+                          d="M4 6h16M7 12h10m-7 6h4"
+                          stroke="currentColor"
+                          strokeWidth="1.8"
+                          strokeLinecap="round"
+                        />
+                      </svg>
+                    </motion.button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent side="bottom" align="end" sideOffset={8} className="tags-dropdown p-1.5">
+                    <DropdownMenuLabel className="tags-dropdown__label">Archive filter</DropdownMenuLabel>
+                    <DropdownMenuSeparator className="tags-dropdown__separator" />
+                    <DropdownMenuCheckboxItem
+                      checked={archiveFilter === "all"}
+                      onCheckedChange={() => {
+                        const next: ArchiveFilter = "all";
+                        setArchiveFilter(next);
+                        void loadArchive(next, archiveQuery);
+                      }}
+                      className="tags-dropdown__item"
+                    >
+                      <DropdownMenuItemIndicator className="tags-dropdown__indicator">✓</DropdownMenuItemIndicator>
+                      All
+                    </DropdownMenuCheckboxItem>
+                    <DropdownMenuCheckboxItem
+                      checked={archiveFilter === "completed"}
+                      onCheckedChange={() => {
+                        const next: ArchiveFilter = "completed";
+                        setArchiveFilter(next);
+                        void loadArchive(next, archiveQuery);
+                      }}
+                      className="tags-dropdown__item"
+                    >
+                      <DropdownMenuItemIndicator className="tags-dropdown__indicator">✓</DropdownMenuItemIndicator>
+                      Completed
+                    </DropdownMenuCheckboxItem>
+                    <DropdownMenuCheckboxItem
+                      checked={archiveFilter === "auto"}
+                      onCheckedChange={() => {
+                        const next: ArchiveFilter = "auto";
+                        setArchiveFilter(next);
+                        void loadArchive(next, archiveQuery);
+                      }}
+                      className="tags-dropdown__item"
+                    >
+                      <DropdownMenuItemIndicator className="tags-dropdown__indicator">✓</DropdownMenuItemIndicator>
+                      Auto-archived
+                    </DropdownMenuCheckboxItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
               {archivedComputed.length === 0 ? (
                 <p className="empty-state compact">No archived reminders yet.</p>

@@ -292,7 +292,7 @@ select {
 }
 
 .reminder-grid > li {
-  padding: 16px 0;
+  padding: 20px 0;
 }
 
 .reminder-grid > li + li {
@@ -321,7 +321,7 @@ select {
 
 .reminder-card.compact {
   border-radius: 0;
-  padding: 0;
+  padding: 0 14px;
   gap: 8px;
 }
 
@@ -552,6 +552,10 @@ select {
 .archive-list {
   display: grid;
   gap: 0;
+}
+
+.archive-list > li {
+  padding: 20px 0;
 }
 
 .archive-list > li + li {
@@ -1049,19 +1053,23 @@ select {
 }
 
 .archive-toolbar {
-  display: grid;
-  grid-template-columns: auto 1fr;
+  display: flex;
+  align-items: center;
   gap: 8px;
   padding: 0 20px 14px;
 }
 
-.archive-toolbar input,
-.archive-toolbar select {
-  min-height: 38px;
-  border: 1px solid var(--stroke);
-  border-radius: 12px;
-  background: #fff;
-  padding: 8px 10px;
+.archive-toolbar__search-wrap {
+  flex: 1;
+  min-width: 0;
+}
+
+.archive-toolbar__search {
+  width: 100%;
+}
+
+.archive-toolbar__icon-btn {
+  flex-shrink: 0;
 }
 
 .archive-list {

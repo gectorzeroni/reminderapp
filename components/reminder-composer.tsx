@@ -296,6 +296,10 @@ export function ReminderComposer({ onCreate }: Props) {
     const range = selection.getRangeAt(0);
     const span = document.createElement("span");
     span.style.color = color;
+    (span.style as CSSStyleDeclaration & { webkitTextFillColor?: string }).webkitTextFillColor = color;
+    span.style.backgroundImage = "none";
+    span.style.backgroundClip = "border-box";
+    (span.style as CSSStyleDeclaration & { webkitBackgroundClip?: string }).webkitBackgroundClip = "border-box";
     const fragment = range.extractContents();
     span.appendChild(fragment);
     range.insertNode(span);
