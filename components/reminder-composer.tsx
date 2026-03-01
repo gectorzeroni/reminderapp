@@ -292,8 +292,18 @@ export function ReminderComposer({ onCreate }: Props) {
       selection.removeAllRanges();
       selection.addRange(selectionRangeRef.current);
     }
-    document.execCommand("styleWithCSS", false, "true");
-    document.execCommand("foreColor", false, color);
+    if (!selection || selection.rangeCount === 0 || selection.isCollapsed) return;
+    const range = selection.getRangeAt(0);
+    const span = document.createElement("span");
+    span.style.color = color;
+    const fragment = range.extractContents();
+    span.appendChild(fragment);
+    range.insertNode(span);
+    const newRange = document.createRange();
+    newRange.selectNodeContents(span);
+    selection.removeAllRanges();
+    selection.addRange(newRange);
+    selectionRangeRef.current = newRange.cloneRange();
     if (selection?.rangeCount) {
       selectionRangeRef.current = selection.getRangeAt(0).cloneRange();
     }
