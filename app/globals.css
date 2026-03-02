@@ -313,6 +313,7 @@ select {
   padding: 8px 14px;
   display: grid;
   gap: 8px;
+  cursor: pointer;
   transition:
     opacity 220ms ease,
     transform 220ms ease,
@@ -427,6 +428,76 @@ select {
 .rich-text ol {
   margin: 0.35em 0 0.35em 1.2em;
   padding: 0;
+}
+
+.rich-text ul {
+  list-style: disc outside;
+}
+
+.rich-text ol {
+  list-style: decimal outside;
+}
+
+.rich-text ul[data-list="todo"] {
+  list-style: none;
+  margin-left: 0;
+  padding-left: 0;
+}
+
+.rich-text ul[data-list="todo"] li {
+  position: relative;
+  min-height: 30px;
+  padding-left: 34px;
+  padding-top: 2px;
+  padding-bottom: 6px;
+}
+
+.rich-text ul[data-list="todo"] li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.08em;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  border: 1px solid rgba(32, 31, 26, 0.22);
+  background: transparent;
+  transition: background-color 140ms ease, border-color 140ms ease;
+}
+
+.rich-text ul[data-list="todo"] li[data-checked="true"]::before {
+  border-color: rgba(17, 119, 58, 0.7);
+  background: rgba(44, 188, 100, 0.14);
+}
+
+.rich-text ul[data-list="todo"] li[data-checked="true"]::after {
+  content: "";
+  position: absolute;
+  left: 8px;
+  top: 7px;
+  width: 8px;
+  height: 5px;
+  border: 2px solid rgba(17, 119, 58, 0.95);
+  border-top: 0;
+  border-right: 0;
+  transform: rotate(-45deg);
+}
+
+.rich-text[contenteditable="true"] ul[data-list="todo"] li {
+  cursor: pointer;
+}
+
+.rich-text ul[data-list="todo"] li > span[data-todo-text] {
+  position: relative;
+  display: inline;
+  transition: opacity 140ms ease;
+}
+
+.rich-text ul[data-list="todo"] li[data-checked="true"] > span[data-todo-text] {
+  text-decoration: line-through;
+  text-decoration-thickness: 2px;
+  text-decoration-color: rgba(4, 5, 26, 0.52);
+  opacity: 0.56;
 }
 
 .tag-chip-list {
@@ -601,7 +672,7 @@ select {
   align-items: flex-start;
   gap: 12px;
   border: 1px solid rgba(36, 34, 28, 0.12);
-  background: var(--bg);
+  background: transparent;
 }
 
 .reminder-attachment.is-clickable {
@@ -702,7 +773,7 @@ select {
   height: 84px;
   border-radius: 8px;
   border: 1px solid rgba(36, 34, 28, 0.12);
-  background: var(--bg);
+  background: transparent;
   overflow: hidden;
   display: grid;
   place-items: center;
@@ -1423,6 +1494,8 @@ select {
   border: 0;
   min-height: 0;
   height: auto;
+  resize: none;
+  overflow: hidden;
   line-height: 1.1;
   padding: 0 4px;
   background: transparent;
@@ -1430,6 +1503,19 @@ select {
   font-size: 32px;
   outline: none;
   margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.note-editor__title-row {
+  position: relative;
+}
+
+.note-editor__title-check {
+  position: absolute;
+  left: -36px;
+  top: 6px;
 }
 
 .note-editor__content {
@@ -1444,6 +1530,7 @@ select {
 }
 
 .note-editor__body > .note-editor__title,
+.note-editor__body > .note-editor__title-row,
 .note-editor__body > .note-editor__content,
 .note-editor__body > .tag-chip-list,
 .note-editor__body > .note-editor__attachments {
@@ -1529,6 +1616,11 @@ select {
   flex-wrap: wrap;
 }
 
+.text-format-popover__row--lists {
+  display: grid;
+  gap: 4px;
+}
+
 .text-format-popover__divider {
   height: 1px;
   background: rgba(36, 34, 28, 0.12);
@@ -1549,6 +1641,21 @@ select {
   background: rgba(17, 24, 39, 0.08);
 }
 
+.text-format-popover__list-btn {
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  text-align: left;
+  font-size: 0.82rem;
+  color: var(--text);
+  padding: 6px 8px;
+  cursor: pointer;
+}
+
+.text-format-popover__list-btn:hover {
+  background: rgba(17, 24, 39, 0.08);
+}
+
 .text-format-popover__swatch {
   width: 24px;
   height: 24px;
@@ -1560,11 +1667,11 @@ select {
 @keyframes text-popover-in {
   from {
     opacity: 0;
-    transform: translateY(4px);
+    transform: translate(-50%, -100%) translateY(4px);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: translate(-50%, -100%) translateY(0);
   }
 }
 

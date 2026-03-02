@@ -2,8 +2,9 @@
 
 import * as motion from "motion/react-client";
 import { AnimatePresence } from "motion/react";
-import type { ClipboardEvent, DragEvent } from "react";
+import type { ClipboardEvent, DragEvent, KeyboardEvent as ReactKeyboardEvent, MouseEvent } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { AnnotationText, Attachment, Calendar, Close, File, Image, Link, MoreHorizontal } from "griddy-icons";
 import { Checkbox } from "@/components/animate-ui/components/radix/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/animate-ui/components/radix/popover";
 import { MAX_ATTACHMENTS } from "@/lib/constants";
@@ -50,6 +51,13 @@ type EditorAttachment = ReminderWithComputed["attachments"][number] & {
   localFile?: File;
 };
 
+type FrozenPreview = {
+  title: string;
+  bodyHtml: string;
+  tags: string[];
+  attachments: ReminderWithComputed["attachments"];
+};
+
 const TEXT_COLOR_PRESETS = ["#111827", "#2563eb", "#c2410c", "#059669"] as const;
 const TEXT_GRADIENT_PRESETS = [
   "linear-gradient(90deg, #2563eb 0%, #7c3aed 100%)",
@@ -82,6 +90,79 @@ function htmlToPlainText(html: string): string {
     .replace(/<[^>]*>/g, "")
     .replace(/\u00a0/g, " ")
     .trim();
+}
+
+function getListContext(selection: Selection | null) {
+  if (!selection || selection.rangeCount === 0) return { list: null as HTMLElement | null, item: null as HTMLElement | null };
+  const range = selection.getRangeAt(0);
+  const anchor =
+    range.commonAncestorContainer instanceof Element
+      ? range.commonAncestorContainer
+      : range.commonAncestorContainer.parentElement;
+  const item = anchor?.closest("li") as HTMLElement | null;
+  const list = item?.closest("ul,ol") as HTMLElement | null;
+  return { list, item };
+}
+
+function exitListToParagraph(editor: HTMLElement, selection: Selection) {
+  const { list, item } = getListContext(selection);
+  if (!list || !item) return false;
+  const text = item.textContent?.replace(/\u200b/g, "").trim() ?? "";
+  if (!text) item.remove();
+  if (!list.querySelector("li")) list.remove();
+  const container = list.isConnected ? list : editor;
+  const paragraph = document.createElement("p");
+  paragraph.appendChild(document.createElement("br"));
+  if (container.parentNode) {
+    container.parentNode.insertBefore(paragraph, container.nextSibling);
+  } else {
+    editor.appendChild(paragraph);
+  }
+  const range = document.createRange();
+  range.setStart(paragraph, 0);
+  range.collapse(true);
+  selection.removeAllRanges();
+  selection.addRange(range);
+  return true;
+}
+
+function normalizeTodoItems(list: HTMLElement) {
+  for (const li of Array.from(list.querySelectorAll(":scope > li"))) {
+    if (li.getAttribute("data-checked") !== "true") {
+      li.removeAttribute("data-checked");
+    }
+    const existingWrapper = li.querySelector(":scope > span[data-todo-text]") as HTMLSpanElement | null;
+    if (existingWrapper) continue;
+    const wrapper = document.createElement("span");
+    wrapper.setAttribute("data-todo-text", "true");
+    const movableNodes = Array.from(li.childNodes).filter((node) => {
+      if (!(node instanceof HTMLElement)) return true;
+      return node.tagName !== "UL" && node.tagName !== "OL";
+    });
+    for (const node of movableNodes) {
+      wrapper.appendChild(node);
+    }
+    li.insertBefore(wrapper, li.firstChild);
+  }
+}
+
+function normalizeStandardListItems(list: HTMLElement) {
+  list.removeAttribute("data-list");
+  for (const li of Array.from(list.querySelectorAll(":scope > li"))) {
+    li.removeAttribute("data-checked");
+    const wrapper = li.querySelector(":scope > span[data-todo-text]") as HTMLSpanElement | null;
+    if (!wrapper) continue;
+    while (wrapper.firstChild) {
+      li.insertBefore(wrapper.firstChild, wrapper);
+    }
+    wrapper.remove();
+  }
+}
+
+function toggleTodoItemChecked(item: HTMLElement) {
+  const checked = item.getAttribute("data-checked") === "true";
+  if (checked) item.removeAttribute("data-checked");
+  else item.setAttribute("data-checked", "true");
 }
 
 function fileToDataUrl(file: File): Promise<string> {
@@ -151,7 +232,6 @@ export function ReminderCard({
   const parsedNote = parseStoredNote(reminder.note);
   const title = parsedNote.title;
   const noteBodyHtml = parsedNote.bodyHtml;
-  const showInlineBody = !title && Boolean(noteBodyHtml);
   const tags = parsedNote.tags.length ? parsedNote.tags : extractTagsFromText(parsedNote.plainText);
   const summaries = attachmentSummary(reminder);
   const reminderStateLabel =
@@ -173,6 +253,7 @@ export function ReminderCard({
   const [editorHtml, setEditorHtml] = useState(noteBodyHtml);
   const [editorTagState, setEditorTagState] = useState(tags);
   const [editorAttachments, setEditorAttachments] = useState<EditorAttachment[]>(reminder.attachments);
+  const [frozenPreview, setFrozenPreview] = useState<FrozenPreview | null>(null);
   const [editorRemindAt, setEditorRemindAt] = useState(reminder.remindAt ? toLocalDatetimeValue(new Date(reminder.remindAt)) : "");
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -182,6 +263,7 @@ export function ReminderCard({
     y: 0
   });
   const editorRef = useRef<HTMLDivElement>(null);
+  const editorTitleRef = useRef<HTMLTextAreaElement>(null);
   const editorPanelRef = useRef<HTMLDivElement>(null);
   const editorFileInputRef = useRef<HTMLInputElement>(null);
   const selectionRangeRef = useRef<Range | null>(null);
@@ -196,7 +278,11 @@ export function ReminderCard({
   }, [editorTagState, editorTitle, editorHtml]);
 
   const hasLeadingCheckbox = !compact && reminder.status !== "archived";
-  const allAttachments = reminder.attachments;
+  const allAttachments = (editorOpen && frozenPreview ? frozenPreview.attachments : reminder.attachments) as ReminderWithComputed["attachments"];
+  const displayTitle = editorOpen && frozenPreview ? frozenPreview.title : title;
+  const displayBodyHtml = editorOpen && frozenPreview ? frozenPreview.bodyHtml : noteBodyHtml;
+  const displayTags = editorOpen && frozenPreview ? frozenPreview.tags : tags;
+  const showInlineBody = !displayTitle && Boolean(displayBodyHtml);
   const scheduleParts = useMemo(() => splitLocalDatetime(editorRemindAt), [editorRemindAt]);
   const capacityRemaining = MAX_ATTACHMENTS - editorAttachments.length;
 
@@ -223,6 +309,12 @@ export function ReminderCard({
     setEditorHtml(noteBodyHtml);
     setEditorTagState(tags);
     setEditorAttachments(reminder.attachments);
+    setFrozenPreview({
+      title,
+      bodyHtml: noteBodyHtml,
+      tags,
+      attachments: reminder.attachments
+    });
     setEditorRemindAt(reminder.remindAt ? toLocalDatetimeValue(new Date(reminder.remindAt)) : "");
     setScheduleOpen(false);
     setEditorClosing(false);
@@ -437,11 +529,12 @@ export function ReminderCard({
     setFormatMenu((prev) => ({ ...prev, open: false }));
   }
 
-  function openFormatMenuFromSelection(clientX?: number, clientY?: number) {
+  function openFormatMenuFromSelection(clientX?: number, clientY?: number, allowCollapsed = false) {
     const editor = editorRef.current;
     const selection = window.getSelection();
-    if (!editor || !selection || selection.rangeCount === 0 || selection.isCollapsed) return;
-    if (!selection.toString().trim()) return;
+    if (!editor || !selection || selection.rangeCount === 0) return;
+    if (!allowCollapsed && selection.isCollapsed) return;
+    if (!allowCollapsed && !selection.toString().trim()) return;
     const range = selection.getRangeAt(0);
     if (!editor.contains(range.commonAncestorContainer)) return;
     selectionRangeRef.current = range.cloneRange();
@@ -453,6 +546,38 @@ export function ReminderCard({
     const x = rect.left + rect.width / 2;
     const y = rect.top;
     setFormatMenu({ open: true, x, y });
+  }
+
+  function applyList(type: "todo" | "bullet" | "numbered") {
+    const editor = editorRef.current;
+    if (!editor) return;
+    const selection = window.getSelection();
+    editor.focus();
+    if (selectionRangeRef.current && selection) {
+      selection.removeAllRanges();
+      selection.addRange(selectionRangeRef.current);
+    }
+
+    document.execCommand(type === "numbered" ? "insertOrderedList" : "insertUnorderedList");
+
+    const activeSelection = window.getSelection();
+    const { list } = getListContext(activeSelection);
+    if (list?.tagName === "UL") {
+      if (type === "todo") {
+        list.setAttribute("data-list", "todo");
+        normalizeTodoItems(list);
+      } else {
+        normalizeStandardListItems(list);
+      }
+    } else if (list?.tagName === "OL") {
+      normalizeStandardListItems(list);
+    }
+
+    if (selection?.rangeCount) {
+      selectionRangeRef.current = selection.getRangeAt(0).cloneRange();
+    }
+    setEditorHtml(editor.innerHTML);
+    setFormatMenu((prev) => ({ ...prev, open: false }));
   }
 
   function snapshotDraft(draft: EditorDraft) {
@@ -598,8 +723,15 @@ export function ReminderCard({
     closeTimerRef.current = setTimeout(() => {
       setEditorOpen(false);
       setEditorClosing(false);
+      setFrozenPreview(null);
       closeTimerRef.current = null;
     }, 220);
+  }
+
+  async function completeFromEditor() {
+    if (isCompleting) return;
+    closeEditorWithAutosave();
+    await handleComplete();
   }
 
   useEffect(() => {
@@ -611,6 +743,14 @@ export function ReminderCard({
       editor.innerHTML = next;
     }
   }, [editorOpen]);
+
+  useEffect(() => {
+    if (!editorOpen) return;
+    const titleEl = editorTitleRef.current;
+    if (!titleEl) return;
+    titleEl.style.height = "0px";
+    titleEl.style.height = `${Math.max(titleEl.scrollHeight, 42)}px`;
+  }, [editorOpen, editorTitle]);
 
   useEffect(() => {
     if (!editorOpen) return;
@@ -675,6 +815,35 @@ export function ReminderCard({
     };
   }, []);
 
+  function onEditorKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
+    if (event.key !== "Enter") return;
+    const selection = window.getSelection();
+    const { list } = getListContext(selection);
+    if (!list) return;
+    if (event.shiftKey && selection) {
+      event.preventDefault();
+      if (exitListToParagraph(event.currentTarget, selection)) {
+        setEditorHtml(event.currentTarget.innerHTML);
+      }
+    }
+  }
+
+  function onEditorMouseDown(event: MouseEvent<HTMLDivElement>) {
+    const target = event.target as HTMLElement | null;
+    if (!target) return;
+    const item = target.closest('ul[data-list="todo"] > li') as HTMLElement | null;
+    if (!item) return;
+    const list = item.closest('ul[data-list="todo"]') as HTMLElement | null;
+    if (list) normalizeTodoItems(list);
+    const rect = item.getBoundingClientRect();
+    if (event.clientX - rect.left > 30) return;
+    event.preventDefault();
+    toggleTodoItemChecked(item);
+    if (editorRef.current) {
+      setEditorHtml(editorRef.current.innerHTML);
+    }
+  }
+
   async function handleComplete() {
     if (isCompleting) return;
     setIsCompleting(true);
@@ -686,7 +855,7 @@ export function ReminderCard({
   return (
     <>
       <motion.article
-        className={`reminder-card ${compact ? "compact" : ""} ${isCompleting ? "is-completing" : ""} ${menuOpen ? "menu-open" : ""} ${hasLeadingCheckbox ? "has-leading-check" : ""} ${title ? "" : "no-title"}`}
+        className={`reminder-card ${compact ? "compact" : ""} ${isCompleting ? "is-completing" : ""} ${menuOpen ? "menu-open" : ""} ${hasLeadingCheckbox ? "has-leading-check" : ""} ${displayTitle ? "" : "no-title"}`}
         onClick={(event) => {
           if (isInteractiveTarget(event.target)) return;
           openEditor();
@@ -702,7 +871,7 @@ export function ReminderCard({
                   if (checked === true) void handleComplete();
                 }}
                 aria-label="Mark reminder as done"
-                className="todo-check-ui size-6 rounded-md border border-[rgba(32,31,26,0.22)] bg-white text-[rgba(17,119,58,0.95)] shadow-none transition-colors data-[state=checked]:border-[rgba(17,119,58,0.7)] data-[state=checked]:bg-[rgba(44,188,100,0.14)] hover:bg-[rgba(17,24,39,0.04)]"
+                className="todo-check-ui size-6 rounded-md border border-[rgba(32,31,26,0.22)] bg-transparent text-[rgba(17,119,58,0.95)] shadow-none transition-colors data-[state=checked]:border-[rgba(17,119,58,0.7)] data-[state=checked]:bg-[rgba(44,188,100,0.14)] hover:bg-[rgba(17,24,39,0.04)]"
               />
             ) : null}
             <div className="reminder-card__header-text">
@@ -722,9 +891,9 @@ export function ReminderCard({
                   {reminder.remindAt ? ` · ${formatWhen(reminder.remindAt)}` : ""}
                 </p>
               ) : null}
-              {title ? <h3>{title}</h3> : null}
+              {displayTitle ? <h3>{displayTitle}</h3> : null}
               {showInlineBody ? (
-                <div className="reminder-card__note rich-text" dangerouslySetInnerHTML={{ __html: noteBodyHtml }} />
+                <div className="reminder-card__note rich-text" dangerouslySetInnerHTML={{ __html: displayBodyHtml }} />
               ) : null}
             </div>
           </div>
@@ -739,7 +908,7 @@ export function ReminderCard({
                       aria-label="More reminder actions"
                       aria-expanded={menuOpen}
                     >
-                      ⋯
+                      <MoreHorizontal size={18} aria-hidden="true" />
                     </button>
                   </PopoverTrigger>
                   <PopoverContent side="bottom" align="end" sideOffset={6} className="card-menu__panel p-1.5">
@@ -812,13 +981,13 @@ export function ReminderCard({
           </div>
         </div>
 
-        {noteBodyHtml && !showInlineBody ? (
-          <div className="reminder-card__note rich-text" dangerouslySetInnerHTML={{ __html: noteBodyHtml }} />
+        {displayBodyHtml && !showInlineBody ? (
+          <div className="reminder-card__note rich-text" dangerouslySetInnerHTML={{ __html: displayBodyHtml }} />
         ) : null}
 
-        {tags.length > 0 ? (
+        {displayTags.length > 0 ? (
           <div className="tag-chip-list" aria-label="Reminder tags">
-            {tags.map((tag) => (
+            {displayTags.map((tag) => (
               <span key={`${reminder.id}-${tag}`} className="tag-chip" style={getTagChipStyle(tag)}>
                 #{tag}
               </span>
@@ -863,7 +1032,7 @@ export function ReminderCard({
                           // eslint-disable-next-line @next/next/no-img-element
                           <img src={attachment.previewIconUrl} alt="" width={22} height={22} />
                         ) : (
-                          <span aria-hidden="true">🔗</span>
+                          <Link size={18} aria-hidden="true" />
                         )}
                       </div>
                     )}
@@ -878,13 +1047,13 @@ export function ReminderCard({
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={attachment.previewImageUrl} alt="" className="image-attachment-tile__img" />
                     ) : (
-                      <span aria-hidden="true">🖼️</span>
+                      <Image size={18} aria-hidden="true" />
                     )}
                   </>
                 ) : attachment.kind === "file" ? (
                   <>
                     <div className="reminder-attachment__icon">
-                      <span aria-hidden="true">📎</span>
+                      <File size={18} aria-hidden="true" />
                     </div>
                     <div className="reminder-attachment__body">
                       <span>{attachment.fileName || "File"}</span>
@@ -896,7 +1065,7 @@ export function ReminderCard({
                 ) : (
                   <>
                     <div className="reminder-attachment__icon">
-                      <span aria-hidden="true">📝</span>
+                      <AnnotationText size={18} aria-hidden="true" />
                     </div>
                     <div className="reminder-attachment__body">
                       <span>{attachment.textContent?.slice(0, 120) || "Text snippet"}</span>
@@ -911,7 +1080,7 @@ export function ReminderCard({
         {compact && reminder.status === "archived" && onRestore ? (
           <div className="reminder-actions">
             <button onClick={() => onRestore(reminder.id)} className="btn">
-              Restore (reschedule)
+              Restore
             </button>
           </div>
         ) : null}
@@ -954,15 +1123,7 @@ export function ReminderCard({
                 aria-label="Add attachment"
                 title="Add attachment"
               >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                  <path
-                    d="M16.5 6.5 9 14a3.5 3.5 0 1 0 5 5l7-7a5.5 5.5 0 1 0-7.8-7.8l-7.2 7.2"
-                    stroke="currentColor"
-                    strokeWidth="1.7"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
+                <Attachment size={18} aria-hidden="true" />
               </motion.button>
               <Popover open={scheduleOpen} onOpenChange={setScheduleOpen}>
                 <PopoverTrigger asChild>
@@ -974,15 +1135,7 @@ export function ReminderCard({
                     aria-label="Set reminder date and time"
                     title="Set reminder date and time"
                   >
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                      <path
-                        d="M7 3v3M17 3v3M4 9h16M6 5h12a2 2 0 0 1 2 2v11a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V7a2 2 0 0 1 2-2Z"
-                        stroke="currentColor"
-                        strokeWidth="1.7"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </svg>
+                    <Calendar size={18} aria-hidden="true" />
                   </motion.button>
                 </PopoverTrigger>
                 <PopoverContent side="bottom" align="end" sideOffset={8} className="schedule-popover">
@@ -1030,7 +1183,7 @@ export function ReminderCard({
                 onClick={closeEditorWithAutosave}
                 aria-label="Close edit note"
               >
-                ×
+                <Close size={18} aria-hidden="true" />
               </motion.button>
             </div>
           </div>
@@ -1045,13 +1198,28 @@ export function ReminderCard({
             }}
           />
           <div className="note-editor__body">
-            <input
-              className="note-editor__title"
-              value={editorTitle}
-              onChange={(e) => setEditorTitle(e.target.value)}
-              placeholder="Title"
-              maxLength={180}
-            />
+            <div className="note-editor__title-row">
+              {!compact && reminder.status !== "archived" ? (
+                <Checkbox
+                  checked={isCompleting}
+                  disabled={isCompleting}
+                  onCheckedChange={(checked) => {
+                    if (checked === true) void completeFromEditor();
+                  }}
+                  aria-label="Mark reminder as done"
+                  className="note-editor__title-check todo-check-ui size-6 rounded-md border border-[rgba(32,31,26,0.22)] bg-transparent text-[rgba(17,119,58,0.95)] shadow-none transition-colors data-[state=checked]:border-[rgba(17,119,58,0.7)] data-[state=checked]:bg-[rgba(44,188,100,0.14)] hover:bg-[rgba(17,24,39,0.04)]"
+                />
+              ) : null}
+              <textarea
+                ref={editorTitleRef}
+                className="note-editor__title"
+                value={editorTitle}
+                onChange={(e) => setEditorTitle(e.target.value)}
+                placeholder="Title"
+                maxLength={300}
+                rows={1}
+              />
+            </div>
             <div
               ref={editorRef}
               className="note-editor__content rich-text"
@@ -1060,14 +1228,14 @@ export function ReminderCard({
               role="textbox"
               data-placeholder="Write details..."
               onInput={(e) => setEditorHtml((e.target as HTMLDivElement).innerHTML)}
+              onKeyDown={onEditorKeyDown}
+              onMouseDown={onEditorMouseDown}
               onDrop={(event) => void onEditorDrop(event)}
               onDragOver={(event) => event.preventDefault()}
               onPaste={(event) => void onEditorPaste(event)}
               onContextMenu={(event) => {
-                openFormatMenuFromSelection(event.clientX, event.clientY);
-                if (window.getSelection()?.toString().trim()) {
-                  event.preventDefault();
-                }
+                event.preventDefault();
+                openFormatMenuFromSelection(event.clientX, event.clientY, true);
               }}
             />
             {formatMenu.open ? (
@@ -1104,6 +1272,33 @@ export function ReminderCard({
                     onClick={() => applyFormatting("strikeThrough")}
                   >
                     <s>S</s>
+                  </button>
+                </div>
+                <div className="text-format-popover__divider" />
+                <div className="text-format-popover__row text-format-popover__row--lists">
+                  <button
+                    type="button"
+                    className="text-format-popover__list-btn"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => applyList("todo")}
+                  >
+                    To-do list
+                  </button>
+                  <button
+                    type="button"
+                    className="text-format-popover__list-btn"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => applyList("bullet")}
+                  >
+                    Bulleted list
+                  </button>
+                  <button
+                    type="button"
+                    className="text-format-popover__list-btn"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => applyList("numbered")}
+                  >
+                    Numbered list
                   </button>
                 </div>
                 <div className="text-format-popover__divider" />
@@ -1157,7 +1352,7 @@ export function ReminderCard({
                         });
                       }}
                     >
-                      ×
+                      <Close size={14} aria-hidden="true" />
                     </button>
                   </span>
                 ))}
@@ -1204,7 +1399,7 @@ export function ReminderCard({
                                   // eslint-disable-next-line @next/next/no-img-element
                                   <img src={attachment.previewIconUrl} alt="" width={22} height={22} />
                                 ) : (
-                                  <span aria-hidden="true">🔗</span>
+                                  <Link size={18} aria-hidden="true" />
                                 )}
                               </div>
                             )}
@@ -1219,13 +1414,13 @@ export function ReminderCard({
                               // eslint-disable-next-line @next/next/no-img-element
                               <img src={attachment.previewImageUrl} alt="" className="image-attachment-tile__img" />
                             ) : (
-                              <span aria-hidden="true">🖼️</span>
+                              <Image size={18} aria-hidden="true" />
                             )}
                           </>
                         ) : attachment.kind === "file" ? (
                           <>
                             <div className="reminder-attachment__icon">
-                              <span aria-hidden="true">📎</span>
+                              <File size={18} aria-hidden="true" />
                             </div>
                             <div className="reminder-attachment__body">
                               <span>{attachment.fileName || "File"}</span>
@@ -1237,7 +1432,7 @@ export function ReminderCard({
                         ) : (
                           <>
                             <div className="reminder-attachment__icon">
-                              <span aria-hidden="true">📝</span>
+                              <AnnotationText size={18} aria-hidden="true" />
                             </div>
                             <div className="reminder-attachment__body">
                               <span>{attachment.textContent?.slice(0, 120) || "Text snippet"}</span>
@@ -1253,7 +1448,7 @@ export function ReminderCard({
                           }}
                           aria-label={attachment.kind === "image" ? "Remove image attachment" : "Remove attachment"}
                         >
-                          ×
+                          <Close size={14} aria-hidden="true" />
                         </button>
                       </li>
                     ))}

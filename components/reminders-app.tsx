@@ -4,6 +4,7 @@ import * as motion from "motion/react-client";
 import { AnimatePresence } from "motion/react";
 import { useRouter } from "next/navigation";
 import { startTransition, useEffect, useMemo, useRef, useState } from "react";
+import { Archive, Close, Filter, SwapVertical } from "griddy-icons";
 import { PacmanLoader } from "react-spinners";
 import { FireworksBackground } from "@/components/animate-ui/components/backgrounds/fireworks";
 import {
@@ -295,7 +296,7 @@ export function RemindersApp() {
     setArchive((prev) => [body.reminder, ...prev]);
   }
 
-  async function rescheduleReminder(id: string, remindAt: string) {
+  async function rescheduleReminder(id: string, remindAt: string | null) {
     const res = await fetch(`/api/reminders/${id}`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
@@ -327,14 +328,7 @@ export function RemindersApp() {
   }
 
   async function restoreReminder(id: string) {
-    const localValue = window.prompt("Choose a new date/time (YYYY-MM-DDTHH:mm)", "");
-    if (!localValue) return;
-    const parsed = new Date(localValue);
-    if (Number.isNaN(parsed.getTime())) {
-      window.alert("Invalid date/time format.");
-      return;
-    }
-    await rescheduleReminder(id, parsed.toISOString());
+    await rescheduleReminder(id, null);
   }
 
   async function saveSettings(next: Partial<Profile>) {
@@ -428,21 +422,7 @@ export function RemindersApp() {
                   whileHover={{ scale: 1.12 }}
                   whileTap={{ scale: 0.9 }}
                 >
-                  <svg
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    xmlns="http://www.w3.org/2000/svg"
-                    aria-hidden="true"
-                  >
-                    <path
-                      d="M4 6h16M7 12h10m-7 6h4"
-                      stroke="currentColor"
-                      strokeWidth="1.8"
-                      strokeLinecap="round"
-                    />
-                  </svg>
+                  <Filter size={16} aria-hidden="true" />
                 </motion.button>
               </DropdownMenuTrigger>
               <DropdownMenuContent side="bottom" align="end" sideOffset={8} className="tags-dropdown p-1.5">
@@ -493,22 +473,7 @@ export function RemindersApp() {
                   whileHover={{ scale: 1.12 }}
                   whileTap={{ scale: 0.9 }}
                 >
-                  <svg
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    xmlns="http://www.w3.org/2000/svg"
-                    aria-hidden="true"
-                  >
-                    <path
-                      d="M8 6v12m0 0-3-3m3 3 3-3M16 18V6m0 0-3 3m3-3 3 3"
-                      stroke="currentColor"
-                      strokeWidth="1.8"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
+                  <SwapVertical size={16} aria-hidden="true" />
                 </motion.button>
               </DropdownMenuTrigger>
               <DropdownMenuContent side="bottom" align="end" sideOffset={8} className="tags-dropdown p-1.5">
@@ -624,7 +589,7 @@ export function RemindersApp() {
                   <h2>Archive</h2>
                 </div>
                 <button className="icon-btn large" onClick={() => setArchiveOpen(false)} aria-label="Close archive">
-                  ×
+                  <Close size={18} aria-hidden="true" />
                 </button>
               </div>
               <div className="archive-toolbar">
@@ -651,21 +616,7 @@ export function RemindersApp() {
                       whileHover={{ scale: 1.12 }}
                       whileTap={{ scale: 0.9 }}
                     >
-                      <svg
-                        width="14"
-                        height="14"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        xmlns="http://www.w3.org/2000/svg"
-                        aria-hidden="true"
-                      >
-                        <path
-                          d="M4 6h16M7 12h10m-7 6h4"
-                          stroke="currentColor"
-                          strokeWidth="1.8"
-                          strokeLinecap="round"
-                        />
-                      </svg>
+                      <Filter size={16} aria-hidden="true" />
                     </motion.button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent side="bottom" align="end" sideOffset={8} className="tags-dropdown p-1.5">
@@ -744,30 +695,7 @@ export function RemindersApp() {
           aria-label="Open archive"
           title="Archive"
         >
-          <svg
-            aria-hidden="true"
-            width="18"
-            height="18"
-            viewBox="0 0 24 24"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-          >
-            <path
-              d="M5 7h14l-1.1 12.1a2 2 0 0 1-1.99 1.82H8.09a2 2 0 0 1-1.99-1.82L5 7Z"
-              stroke="currentColor"
-              strokeWidth="1.6"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-            <path
-              d="M9 7V5.5A2.5 2.5 0 0 1 11.5 3h1A2.5 2.5 0 0 1 15 5.5V7"
-              stroke="currentColor"
-              strokeWidth="1.6"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-            <path d="M10 11v6M14 11v6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-          </svg>
+          <Archive size={18} aria-hidden="true" />
         </motion.button>
 
         <div className="settings-anchor settings-anchor--floating">

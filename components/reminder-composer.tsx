@@ -1,8 +1,9 @@
 "use client";
 
 import * as motion from "motion/react-client";
-import type { ClipboardEvent, DragEvent, FormEvent, KeyboardEvent } from "react";
+import type { ClipboardEvent, DragEvent, FormEvent, KeyboardEvent, MouseEvent } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { AnnotationText, Attachment, Calendar, Close, File, Image, Link } from "griddy-icons";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/animate-ui/components/radix/popover";
 import { MAX_ATTACHMENTS } from "@/lib/constants";
 import { getTagChipStyle } from "@/lib/tag-colors";
@@ -99,6 +100,82 @@ function htmlToPlainText(html: string): string {
     .replace(/<[^>]*>/g, "")
     .replace(/\u00a0/g, " ")
     .trim();
+}
+
+function getListContext(selection: Selection | null) {
+  if (!selection || selection.rangeCount === 0) return { list: null as HTMLElement | null, item: null as HTMLElement | null };
+  const range = selection.getRangeAt(0);
+  const anchor =
+    range.commonAncestorContainer instanceof Element
+      ? range.commonAncestorContainer
+      : range.commonAncestorContainer.parentElement;
+  const item = anchor?.closest("li") as HTMLElement | null;
+  const list = item?.closest("ul,ol") as HTMLElement | null;
+  return { list, item };
+}
+
+function exitListToParagraph(editor: HTMLElement, selection: Selection) {
+  const { list, item } = getListContext(selection);
+  if (!list || !item) return false;
+  const text = item.textContent?.replace(/\u200b/g, "").trim() ?? "";
+  if (!text) item.remove();
+  if (!list.querySelector("li")) list.remove();
+  const container = list.isConnected ? list : editor;
+  const paragraph = document.createElement("p");
+  paragraph.appendChild(document.createElement("br"));
+  if (container.parentNode) {
+    container.parentNode.insertBefore(paragraph, container.nextSibling);
+  } else {
+    editor.appendChild(paragraph);
+  }
+  const range = document.createRange();
+  range.setStart(paragraph, 0);
+  range.collapse(true);
+  selection.removeAllRanges();
+  selection.addRange(range);
+  return true;
+}
+
+function normalizeTodoItems(list: HTMLElement) {
+  for (const li of Array.from(list.querySelectorAll(":scope > li"))) {
+    if (li.getAttribute("data-checked") !== "true") {
+      li.removeAttribute("data-checked");
+    }
+    const existingWrapper = li.querySelector(":scope > span[data-todo-text]") as HTMLSpanElement | null;
+    if (existingWrapper) continue;
+    const wrapper = document.createElement("span");
+    wrapper.setAttribute("data-todo-text", "true");
+    const movableNodes = Array.from(li.childNodes).filter((node) => {
+      if (!(node instanceof HTMLElement)) return true;
+      return node.tagName !== "UL" && node.tagName !== "OL";
+    });
+    for (const node of movableNodes) {
+      wrapper.appendChild(node);
+    }
+    li.insertBefore(wrapper, li.firstChild);
+  }
+}
+
+function normalizeStandardListItems(list: HTMLElement) {
+  list.removeAttribute("data-list");
+  for (const li of Array.from(list.querySelectorAll(":scope > li"))) {
+    li.removeAttribute("data-checked");
+    const wrapper = li.querySelector(":scope > span[data-todo-text]") as HTMLSpanElement | null;
+    if (!wrapper) continue;
+    while (wrapper.firstChild) {
+      li.insertBefore(wrapper.firstChild, wrapper);
+    }
+    wrapper.remove();
+  }
+}
+
+function toggleTodoItemChecked(item: HTMLElement) {
+  const checked = item.getAttribute("data-checked") === "true";
+  if (checked) {
+    item.removeAttribute("data-checked");
+  } else {
+    item.setAttribute("data-checked", "true");
+  }
 }
 
 async function fileToAttachment(file: File): Promise<DraftAttachment> {
@@ -261,9 +338,36 @@ export function ReminderComposer({ onCreate }: Props) {
 
   function onBodyKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     if (event.key !== "Enter") return;
+    const selection = window.getSelection();
+    const { list } = getListContext(selection);
+    if (list) {
+      if (event.shiftKey && selection) {
+        event.preventDefault();
+        if (exitListToParagraph(event.currentTarget, selection)) {
+          setBodyEditorHtml(event.currentTarget.innerHTML);
+        }
+      }
+      return;
+    }
     if (event.shiftKey) return;
     event.preventDefault();
     event.currentTarget.closest("form")?.requestSubmit();
+  }
+
+  function onBodyMouseDown(event: MouseEvent<HTMLDivElement>) {
+    const target = event.target as HTMLElement | null;
+    if (!target) return;
+    const item = target.closest('ul[data-list="todo"] > li') as HTMLElement | null;
+    if (!item) return;
+    const list = item.closest('ul[data-list="todo"]') as HTMLElement | null;
+    if (list) normalizeTodoItems(list);
+    const rect = item.getBoundingClientRect();
+    if (event.clientX - rect.left > 30) return;
+    event.preventDefault();
+    toggleTodoItemChecked(item);
+    if (bodyEditorRef.current) {
+      setBodyEditorHtml(bodyEditorRef.current.innerHTML);
+    }
   }
 
   function applyFormatting(command: "bold" | "italic" | "underline" | "strikeThrough") {
@@ -354,11 +458,12 @@ export function ReminderComposer({ onCreate }: Props) {
     window.open(href, "_blank", "noopener,noreferrer");
   }
 
-  function openFormatMenuFromSelection(clientX?: number, clientY?: number) {
+  function openFormatMenuFromSelection(clientX?: number, clientY?: number, allowCollapsed = false) {
     const editor = bodyEditorRef.current;
     const selection = window.getSelection();
-    if (!editor || !selection || selection.rangeCount === 0 || selection.isCollapsed) return;
-    if (!selection.toString().trim()) return;
+    if (!editor || !selection || selection.rangeCount === 0) return;
+    if (!allowCollapsed && selection.isCollapsed) return;
+    if (!allowCollapsed && !selection.toString().trim()) return;
     const range = selection.getRangeAt(0);
     if (!editor.contains(range.commonAncestorContainer)) return;
     selectionRangeRef.current = range.cloneRange();
@@ -370,6 +475,38 @@ export function ReminderComposer({ onCreate }: Props) {
     const x = rect.left + rect.width / 2;
     const y = rect.top;
     setFormatMenu({ open: true, x, y });
+  }
+
+  function applyList(type: "todo" | "bullet" | "numbered") {
+    const editor = bodyEditorRef.current;
+    if (!editor) return;
+    const selection = window.getSelection();
+    editor.focus();
+    if (selectionRangeRef.current && selection) {
+      selection.removeAllRanges();
+      selection.addRange(selectionRangeRef.current);
+    }
+
+    document.execCommand(type === "numbered" ? "insertOrderedList" : "insertUnorderedList");
+
+    const activeSelection = window.getSelection();
+    const { list } = getListContext(activeSelection);
+    if (list?.tagName === "UL") {
+      if (type === "todo") {
+        list.setAttribute("data-list", "todo");
+        normalizeTodoItems(list);
+      } else {
+        normalizeStandardListItems(list);
+      }
+    } else if (list?.tagName === "OL") {
+      normalizeStandardListItems(list);
+    }
+
+    if (selection?.rangeCount) {
+      selectionRangeRef.current = selection.getRangeAt(0).cloneRange();
+    }
+    setBodyEditorHtml(editor.innerHTML);
+    setFormatMenu((prev) => ({ ...prev, open: false }));
   }
 
   useEffect(() => {
@@ -503,13 +640,12 @@ export function ReminderComposer({ onCreate }: Props) {
           aria-label="Reminder body"
           data-placeholder="Write details..."
           onInput={(e) => setBodyEditorHtml((e.target as HTMLDivElement).innerHTML)}
+          onMouseDown={onBodyMouseDown}
           onPaste={onBodyPaste}
           onKeyDown={onBodyKeyDown}
           onContextMenu={(event) => {
-            openFormatMenuFromSelection(event.clientX, event.clientY);
-            if (window.getSelection()?.toString().trim()) {
-              event.preventDefault();
-            }
+            event.preventDefault();
+            openFormatMenuFromSelection(event.clientX, event.clientY, true);
           }}
         />
 
@@ -547,6 +683,33 @@ export function ReminderComposer({ onCreate }: Props) {
                 onClick={() => applyFormatting("strikeThrough")}
               >
                 <s>S</s>
+              </button>
+            </div>
+            <div className="text-format-popover__divider" />
+            <div className="text-format-popover__row text-format-popover__row--lists">
+              <button
+                type="button"
+                className="text-format-popover__list-btn"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => applyList("todo")}
+              >
+                To-do list
+              </button>
+              <button
+                type="button"
+                className="text-format-popover__list-btn"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => applyList("bullet")}
+              >
+                Bulleted list
+              </button>
+              <button
+                type="button"
+                className="text-format-popover__list-btn"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => applyList("numbered")}
+              >
+                Numbered list
               </button>
             </div>
             <div className="text-format-popover__divider" />
@@ -612,12 +775,12 @@ export function ReminderComposer({ onCreate }: Props) {
                             </div>
                           ) : (
                             <div className="reminder-attachment__icon">
-                              {attachment.previewIconUrl ? (
-                                // eslint-disable-next-line @next/next/no-img-element
-                                <img src={attachment.previewIconUrl} alt="" width={22} height={22} />
-                              ) : (
-                                <span aria-hidden="true">🔗</span>
-                              )}
+                        {attachment.previewIconUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={attachment.previewIconUrl} alt="" width={22} height={22} />
+                        ) : (
+                          <Link size={18} aria-hidden="true" />
+                        )}
                             </div>
                           )}
                           <div className="reminder-attachment__body">
@@ -631,13 +794,13 @@ export function ReminderComposer({ onCreate }: Props) {
                             // eslint-disable-next-line @next/next/no-img-element
                             <img src={attachment.previewImageUrl} alt="" className="image-attachment-tile__img" />
                           ) : (
-                            <span aria-hidden="true">🖼️</span>
+                            <Image size={18} aria-hidden="true" />
                           )}
                         </>
                       ) : attachment.kind === "file" ? (
                         <>
                           <div className="reminder-attachment__icon">
-                            <span aria-hidden="true">📎</span>
+                            <File size={18} aria-hidden="true" />
                           </div>
                           <div className="reminder-attachment__body">
                             <span>{attachment.fileName || "File"}</span>
@@ -647,7 +810,7 @@ export function ReminderComposer({ onCreate }: Props) {
                       ) : (
                         <>
                           <div className="reminder-attachment__icon">
-                            <span aria-hidden="true">📝</span>
+                            <AnnotationText size={18} aria-hidden="true" />
                           </div>
                           <div className="reminder-attachment__body">
                             <span>{attachment.textContent?.slice(0, 120) || "Text snippet"}</span>
@@ -663,7 +826,7 @@ export function ReminderComposer({ onCreate }: Props) {
                         }}
                         aria-label={attachment.kind === "image" ? "Remove image attachment" : "Remove attachment"}
                       >
-                        ×
+                        <Close size={16} aria-hidden="true" />
                       </button>
                     </li>
                   );
@@ -694,15 +857,7 @@ export function ReminderComposer({ onCreate }: Props) {
             aria-label="Add file"
             title="Add file"
           >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <path
-                d="M9.5 12.5 15.7 6.3a3.5 3.5 0 1 1 5 5l-9.2 9.2a5.5 5.5 0 1 1-7.8-7.8l9.2-9.2"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
+            <Attachment size={18} aria-hidden="true" />
           </motion.button>
 
           <div className="composer-toolbar__right">
@@ -716,15 +871,7 @@ export function ReminderComposer({ onCreate }: Props) {
                   aria-label="Set reminder date and time"
                   title="Set date and time"
                 >
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                    <path
-                      d="M7 3v3M17 3v3M4 9h16M6 5h12a2 2 0 0 1 2 2v11a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V7a2 2 0 0 1 2-2Z"
-                      stroke="currentColor"
-                      strokeWidth="1.7"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
+                  <Calendar size={18} aria-hidden="true" />
                 </motion.button>
               </PopoverTrigger>
               <PopoverContent side="top" align="end" sideOffset={10} className="schedule-popover">
@@ -776,7 +923,7 @@ export function ReminderComposer({ onCreate }: Props) {
                   aria-label="Clear reminder date and time"
                   title="Clear reminder date and time"
                 >
-                  ×
+                  <Close size={14} aria-hidden="true" />
                 </button>
               </span>
             ) : null}

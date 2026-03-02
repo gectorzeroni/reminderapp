@@ -87,12 +87,15 @@ export function sanitizeNoteHtml(input: string): string {
     }
 
     const safe: string[] = [];
-    if (colorValue) safe.push(`color:${colorValue}`);
+    const isGradientText = Boolean(backgroundImageValue && (backgroundClipText || webkitBackgroundClipText));
+    const allowTransparentTextColor = isGradientText;
+
+    if (colorValue && (colorValue !== "transparent" || allowTransparentTextColor)) {
+      safe.push(`color:${colorValue}`);
+    }
     if (backgroundImageValue) safe.push(`background-image:${backgroundImageValue}`);
     if (backgroundClipText) safe.push("background-clip:text");
     if (webkitBackgroundClipText) safe.push("-webkit-background-clip:text");
-
-    const isGradientText = Boolean(backgroundImageValue && (backgroundClipText || webkitBackgroundClipText));
     if (webkitTextFillValue && (webkitTextFillValue !== "transparent" || isGradientText)) {
       safe.push(`-webkit-text-fill-color:${webkitTextFillValue}`);
     }
@@ -115,12 +118,31 @@ export function sanitizeNoteHtml(input: string): string {
   html = html.replace(/<\/font>/gi, "</span>");
 
   html = html.replace(/<(?!\/?(b|strong|i|em|u|s|br|p|ul|ol|li|span)\b)[^>]*>/gi, "");
-  html = html.replace(/<(\/?)(b|strong|i|em|u|s|br|p|ul|ol|li)(?:\s[^>]*)?>/gi, "<$1$2>");
+  html = html.replace(/<(\/?)(b|strong|i|em|u|s|br|p)(?:\s[^>]*)?>/gi, "<$1$2>");
+  html = html.replace(/<ul(?:\s[^>]*)?>/gi, (tag) => {
+    const dataListMatch = tag.match(/\bdata-list\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i);
+    const dataListRaw = (dataListMatch?.[1] ?? dataListMatch?.[2] ?? dataListMatch?.[3] ?? "").trim().toLowerCase();
+    const dataList = dataListRaw === "todo" ? "todo" : null;
+    return dataList ? `<ul data-list="${dataList}">` : "<ul>";
+  });
+  html = html.replace(/<\/ul(?:\s[^>]*)?>/gi, "</ul>");
+  html = html.replace(/<ol(?:\s[^>]*)?>/gi, "<ol>");
+  html = html.replace(/<\/ol(?:\s[^>]*)?>/gi, "</ol>");
+  html = html.replace(/<li(?:\s[^>]*)?>/gi, (tag) => {
+    const checkedMatch = tag.match(/\bdata-checked\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i);
+    const checkedRaw = (checkedMatch?.[1] ?? checkedMatch?.[2] ?? checkedMatch?.[3] ?? "").trim().toLowerCase();
+    const isChecked = checkedRaw === "true";
+    return isChecked ? '<li data-checked="true">' : "<li>";
+  });
+  html = html.replace(/<\/li(?:\s[^>]*)?>/gi, "</li>");
   html = html.replace(/<span(?:\s[^>]*)?>/gi, (tag) => {
     const styleMatch = tag.match(/\bstyle\s*=\s*(?:"([^"]*)"|'([^']*)')/i);
     const rawStyle = styleMatch?.[1] ?? styleMatch?.[2] ?? "";
     const safeStyle = sanitizeStyleAttribute(rawStyle);
-    return safeStyle ? `<span style="${safeStyle}">` : "<span>";
+    const todoTextMatch = tag.match(/\bdata-todo-text\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i);
+    const todoTextRaw = (todoTextMatch?.[1] ?? todoTextMatch?.[2] ?? todoTextMatch?.[3] ?? "").trim().toLowerCase();
+    const todoTextAttr = todoTextRaw === "true" ? ' data-todo-text="true"' : "";
+    return `<span${safeStyle ? ` style="${safeStyle}"` : ""}${todoTextAttr}>`;
   });
   html = html.replace(/<\/span(?:\s[^>]*)?>/gi, "</span>");
   return html.trim();
