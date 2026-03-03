@@ -238,6 +238,14 @@ export function RemindersApp() {
     });
     return items;
   }, [filteredUpcoming, sortMode]);
+  const pinnedUpcoming = useMemo(
+    () => filteredAndSortedUpcoming.filter((reminder) => reminder.pinned),
+    [filteredAndSortedUpcoming]
+  );
+  const regularUpcoming = useMemo(
+    () => filteredAndSortedUpcoming.filter((reminder) => !reminder.pinned),
+    [filteredAndSortedUpcoming]
+  );
   const isCenteredFeedState = loading || Boolean(error) || filteredAndSortedUpcoming.length === 0;
 
   const timezoneOptions = useMemo(() => {
@@ -314,7 +322,12 @@ export function RemindersApp() {
   async function updateReminderNote(
     id: string,
     note: string,
-    options?: { removeAttachmentIds?: string[]; attachments?: CreateAttachmentInput[]; remindAt?: string | null }
+    options?: {
+      removeAttachmentIds?: string[];
+      attachments?: CreateAttachmentInput[];
+      remindAt?: string | null;
+      pinned?: boolean;
+    }
   ) {
     const res = await fetch(`/api/reminders/${id}`, {
       method: "PATCH",
@@ -325,6 +338,39 @@ export function RemindersApp() {
     const body = (await res.json()) as { reminder: Reminder };
     setUpcoming((prev) => prev.map((r) => (r.id === id ? body.reminder : r)).sort(sortByReminderTime));
     setArchive((prev) => prev.map((r) => (r.id === id ? body.reminder : r)));
+  }
+
+  async function togglePin(id: string, pinned: boolean) {
+    const existing = upcoming.find((item) => item.id === id);
+    if (!existing || existing.pinned === pinned) return;
+
+    setUpcoming((prev) =>
+      prev
+        .map((item) => (item.id === id ? { ...item, pinned } : item))
+        .sort(sortByReminderTime)
+    );
+
+    const res = await fetch(`/api/reminders/${id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ pinned })
+    });
+
+    if (!res.ok) {
+      setUpcoming((prev) =>
+        prev
+          .map((item) => (item.id === id ? existing : item))
+          .sort(sortByReminderTime)
+      );
+      return;
+    }
+
+    const body = (await res.json()) as { reminder: Reminder };
+    setUpcoming((prev) =>
+      prev
+        .map((item) => (item.id === id ? body.reminder : item))
+        .sort(sortByReminderTime)
+    );
   }
 
   async function restoreReminder(id: string) {
@@ -514,6 +560,9 @@ export function RemindersApp() {
           <p className="empty-state error">{error}</p>
         ) : filteredAndSortedUpcoming.length === 0 ? (
           <div className="empty-state">
+            <p className="empty-state__emoji" aria-hidden="true">
+              😭
+            </p>
             {searchQuery.trim().length > 0 || selectedTags.length > 0 ? (
               <p>No reminders match the current filters.</p>
             ) : (
@@ -524,39 +573,87 @@ export function RemindersApp() {
             )}
           </div>
         ) : (
-          <motion.ul className="reminder-grid" layout key={loadAnimationKey}>
-            <AnimatePresence>
-              {filteredAndSortedUpcoming.map((reminder, index) => (
-                <motion.li
-                  key={reminder.id}
-                  layout
-                  initial={{ opacity: 0, y: -20 }}
-                  animate={{
-                    opacity: 1,
-                    y: 0,
-                    transition: {
-                      duration: 0.25,
-                      ease: "easeOut",
-                      delay: index * 0.045
-                    }
-                  }}
-                  exit={{
-                    opacity: 0,
-                    y: -10,
-                    transition: { duration: 0.16, ease: "easeInOut" }
-                  }}
-                >
-                  <ReminderCard
-                    reminder={reminder}
-                  onSnooze={snooze}
-                  onArchive={archiveReminder}
-                  onReschedule={rescheduleReminder}
-                  onUpdateNote={updateReminderNote}
-                />
-                </motion.li>
-              ))}
-            </AnimatePresence>
-          </motion.ul>
+          <div className="reminder-lists" key={loadAnimationKey}>
+            {pinnedUpcoming.length > 0 ? (
+              <section className="reminder-section">
+                <p className="reminder-section__title">Pinned</p>
+                <motion.ul className="reminder-grid reminder-grid--pinned" layout>
+                  <AnimatePresence>
+                    {pinnedUpcoming.map((reminder, index) => (
+                      <motion.li
+                        key={reminder.id}
+                        layout
+                        initial={{ opacity: 0, y: -20 }}
+                        animate={{
+                          opacity: 1,
+                          y: 0,
+                          transition: {
+                            duration: 0.25,
+                            ease: "easeOut",
+                            delay: index * 0.045
+                          }
+                        }}
+                        exit={{
+                          opacity: 0,
+                          y: -10,
+                          transition: { duration: 0.16, ease: "easeInOut" }
+                        }}
+                      >
+                        <ReminderCard
+                          reminder={reminder}
+                          onSnooze={snooze}
+                          onArchive={archiveReminder}
+                          onReschedule={rescheduleReminder}
+                          onUpdateNote={updateReminderNote}
+                          onTogglePin={togglePin}
+                        />
+                      </motion.li>
+                    ))}
+                  </AnimatePresence>
+                </motion.ul>
+              </section>
+            ) : null}
+
+            {regularUpcoming.length > 0 ? (
+              <section className="reminder-section">
+                {pinnedUpcoming.length > 0 ? <p className="reminder-section__title">Other</p> : null}
+                <motion.ul className="reminder-grid" layout>
+                  <AnimatePresence>
+                    {regularUpcoming.map((reminder, index) => (
+                      <motion.li
+                        key={reminder.id}
+                        layout
+                        initial={{ opacity: 0, y: -20 }}
+                        animate={{
+                          opacity: 1,
+                          y: 0,
+                          transition: {
+                            duration: 0.25,
+                            ease: "easeOut",
+                            delay: index * 0.045
+                          }
+                        }}
+                        exit={{
+                          opacity: 0,
+                          y: -10,
+                          transition: { duration: 0.16, ease: "easeInOut" }
+                        }}
+                      >
+                        <ReminderCard
+                          reminder={reminder}
+                          onSnooze={snooze}
+                          onArchive={archiveReminder}
+                          onReschedule={rescheduleReminder}
+                          onUpdateNote={updateReminderNote}
+                          onTogglePin={togglePin}
+                        />
+                      </motion.li>
+                    ))}
+                  </AnimatePresence>
+                </motion.ul>
+              </section>
+            ) : null}
+          </div>
         )}
       </section>
 

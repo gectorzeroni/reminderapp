@@ -36,6 +36,7 @@ create table if not exists public.reminders (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references public.profiles(id) on delete cascade,
   note text,
+  pinned boolean not null default false,
   status reminder_status not null default 'upcoming',
   archive_reason archive_reason,
   remind_at timestamptz,
@@ -44,6 +45,9 @@ create table if not exists public.reminders (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.reminders
+  add column if not exists pinned boolean not null default false;
 
 create table if not exists public.reminder_attachments (
   id uuid primary key default gen_random_uuid(),
@@ -64,6 +68,7 @@ create table if not exists public.reminder_attachments (
 
 create index if not exists reminders_user_id_remind_at_idx on public.reminders(user_id, remind_at);
 create index if not exists reminders_user_id_status_idx on public.reminders(user_id, status);
+create index if not exists reminders_user_id_pinned_idx on public.reminders(user_id, pinned);
 create index if not exists attachments_reminder_id_idx on public.reminder_attachments(reminder_id);
 
 create or replace function public.set_updated_at()

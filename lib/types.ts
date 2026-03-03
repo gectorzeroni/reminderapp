@@ -35,6 +35,7 @@ export interface Reminder {
   id: string;
   userId: string;
   note: string | null;
+  pinned: boolean;
   status: ReminderStatus;
   archiveReason: ArchiveReason;
   remindAt: string | null;
@@ -73,6 +74,7 @@ export interface CreateReminderInput {
 export interface UpdateReminderInput {
   remindAt?: string | null;
   note?: string | null;
+  pinned?: boolean;
   removeAttachmentIds?: string[];
   attachments?: CreateAttachmentInput[];
 }

@@ -27,6 +27,7 @@ type Props = {
   onSnooze: (id: string, preset: "10m" | "1h" | "tomorrow") => void;
   onArchive: (id: string, reason: "completed" | "manual") => Promise<void> | void;
   onReschedule: (id: string, remindAt: string) => void;
+  onTogglePin?: (id: string, pinned: boolean) => Promise<void> | void;
   onUpdateNote?: (
     id: string,
     note: string,
@@ -155,7 +156,9 @@ function normalizeStandardListItems(list: HTMLElement) {
     while (wrapper.firstChild) {
       li.insertBefore(wrapper.firstChild, wrapper);
     }
-    wrapper.remove();
+    if (wrapper.parentNode === li) {
+      li.removeChild(wrapper);
+    }
   }
 }
 
@@ -225,6 +228,7 @@ export function ReminderCard({
   onSnooze,
   onArchive,
   onReschedule,
+  onTogglePin,
   onUpdateNote,
   compact = false,
   onRestore
@@ -266,6 +270,7 @@ export function ReminderCard({
   const editorTitleRef = useRef<HTMLTextAreaElement>(null);
   const editorPanelRef = useRef<HTMLDivElement>(null);
   const editorFileInputRef = useRef<HTMLInputElement>(null);
+  const formatMenuRef = useRef<HTMLDivElement>(null);
   const selectionRangeRef = useRef<Range | null>(null);
   const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -481,10 +486,10 @@ export function ReminderCard({
     const range = selection.getRangeAt(0);
     const span = document.createElement("span");
     span.style.color = color;
-    (span.style as CSSStyleDeclaration & { webkitTextFillColor?: string }).webkitTextFillColor = color;
-    span.style.backgroundImage = "none";
-    span.style.backgroundClip = "border-box";
-    (span.style as CSSStyleDeclaration & { webkitBackgroundClip?: string }).webkitBackgroundClip = "border-box";
+    span.style.removeProperty("-webkit-text-fill-color");
+    span.style.removeProperty("background-image");
+    span.style.removeProperty("background-clip");
+    span.style.removeProperty("-webkit-background-clip");
     const fragment = range.extractContents();
     span.appendChild(fragment);
     range.insertNode(span);
@@ -680,6 +685,7 @@ export function ReminderCard({
   }
 
   function currentDraft() {
+    const liveHtml = editorRef.current?.innerHTML ?? editorHtml;
     const newLocalAttachments = editorAttachments.filter((attachment) => attachment.id.startsWith("local-"));
     const newAttachments = newLocalAttachments.map<CreateAttachmentInput>((attachment) => ({
         kind: attachment.kind,
@@ -697,7 +703,7 @@ export function ReminderCard({
 
     return {
       title: editorTitle,
-      html: editorHtml,
+      html: liveHtml,
       tags: editorTagState,
       attachmentKeys: editorAttachments.map((attachment) => attachment.id),
       newAttachments,
@@ -802,14 +808,16 @@ export function ReminderCard({
 
   useEffect(() => {
     function closeFormatMenu(event: Event) {
-      if (event.target instanceof Element && event.target.closest(".text-format-popover")) return;
+      const targetNode = event.target as Node | null;
+      const panel = formatMenuRef.current;
+      if (panel && targetNode && panel.contains(targetNode)) return;
       setFormatMenu((prev) => (prev.open ? { ...prev, open: false } : prev));
     }
-    window.addEventListener("mousedown", closeFormatMenu);
+    window.addEventListener("pointerdown", closeFormatMenu, true);
     window.addEventListener("scroll", closeFormatMenu, true);
     window.addEventListener("resize", closeFormatMenu);
     return () => {
-      window.removeEventListener("mousedown", closeFormatMenu);
+      window.removeEventListener("pointerdown", closeFormatMenu, true);
       window.removeEventListener("scroll", closeFormatMenu, true);
       window.removeEventListener("resize", closeFormatMenu);
     };
@@ -964,6 +972,18 @@ export function ReminderCard({
                     >
                       Edit
                     </button>
+                    {onTogglePin ? (
+                      <button
+                        type="button"
+                        className="card-menu__item"
+                        onClick={() => {
+                          onTogglePin(reminder.id, !reminder.pinned);
+                          setMenuOpen(false);
+                        }}
+                      >
+                        {reminder.pinned ? "Unpin" : "Pin to top"}
+                      </button>
+                    ) : null}
                     <button
                       type="button"
                       className="card-menu__item danger"
@@ -1239,7 +1259,12 @@ export function ReminderCard({
               }}
             />
             {formatMenu.open ? (
-              <div className="text-format-popover" style={{ left: formatMenu.x, top: formatMenu.y }} role="menu">
+              <div
+                ref={formatMenuRef}
+                className="text-format-popover"
+                style={{ left: formatMenu.x, top: formatMenu.y }}
+                role="menu"
+              >
                 <div className="text-format-popover__row">
                   <button
                     type="button"

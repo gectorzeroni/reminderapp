@@ -33,13 +33,37 @@ export function textToHtml(text: string): string {
 }
 
 export function sanitizeNoteHtml(input: string): string {
+  function isTransparentCssColor(value: string): boolean {
+    const v = value.trim().toLowerCase();
+    if (!v) return false;
+    if (v === "transparent") return true;
+
+    const rgba = v.match(/^rgba\(\s*[\d.]+\s*,\s*[\d.]+\s*,\s*[\d.]+\s*,\s*([\d.]+)\s*\)$/i);
+    if (rgba) {
+      const alpha = Number(rgba[1]);
+      return Number.isFinite(alpha) && alpha <= 0;
+    }
+
+    const hsla = v.match(/^hsla\(\s*[\d.]+\s*,\s*[\d.]+%\s*,\s*[\d.]+%\s*,\s*([\d.]+)\s*\)$/i);
+    if (hsla) {
+      const alpha = Number(hsla[1]);
+      return Number.isFinite(alpha) && alpha <= 0;
+    }
+
+    return false;
+  }
+
   function normalizeCssColor(value: string): string | null {
     const v = value.trim();
     if (!v) return null;
+    if (/[<>]/.test(v)) return null;
+    if (/url\s*\(/i.test(v)) return null;
+    if (/expression\s*\(/i.test(v)) return null;
     if (/^#[0-9a-f]{3,8}$/i.test(v)) return v;
-    if (/^(rgb|rgba|hsl|hsla)\([^)]*\)$/i.test(v)) return v;
-    if (/^[a-z]+$/i.test(v)) return v.toLowerCase();
-    return null;
+    if (/^(rgb|rgba|hsl|hsla|lab|lch|oklab|oklch|color)\([^)]*\)$/i.test(v)) return v;
+    if (/^[a-z-]+$/i.test(v)) return v.toLowerCase();
+    // Allow safe functional/custom color tokens emitted by browsers.
+    return v;
   }
 
   function sanitizeStyleAttribute(styleValue: string): string {
@@ -90,13 +114,15 @@ export function sanitizeNoteHtml(input: string): string {
     const isGradientText = Boolean(backgroundImageValue && (backgroundClipText || webkitBackgroundClipText));
     const allowTransparentTextColor = isGradientText;
 
-    if (colorValue && (colorValue !== "transparent" || allowTransparentTextColor)) {
+    const colorIsTransparent = colorValue ? isTransparentCssColor(colorValue) : false;
+    if (colorValue && (!colorIsTransparent || allowTransparentTextColor)) {
       safe.push(`color:${colorValue}`);
     }
     if (backgroundImageValue) safe.push(`background-image:${backgroundImageValue}`);
     if (backgroundClipText) safe.push("background-clip:text");
     if (webkitBackgroundClipText) safe.push("-webkit-background-clip:text");
-    if (webkitTextFillValue && (webkitTextFillValue !== "transparent" || isGradientText)) {
+    const textFillIsTransparent = webkitTextFillValue ? isTransparentCssColor(webkitTextFillValue) : false;
+    if (webkitTextFillValue && isGradientText && (!textFillIsTransparent || isGradientText)) {
       safe.push(`-webkit-text-fill-color:${webkitTextFillValue}`);
     }
 

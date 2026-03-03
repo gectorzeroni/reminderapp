@@ -79,6 +79,7 @@ export const createReminderSchema = z
 export const updateReminderSchema = z.object({
   remindAt: z.string().datetime().nullable().optional(),
   note: z.string().trim().max(20000).nullable().optional(),
+  pinned: z.boolean().optional(),
   removeAttachmentIds: z.array(z.string().uuid()).max(MAX_ATTACHMENTS).optional(),
   attachments: z.array(reminderAttachmentSchema).max(MAX_ATTACHMENTS).optional()
 }).superRefine((value, ctx) => {

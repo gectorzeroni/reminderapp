@@ -165,7 +165,9 @@ function normalizeStandardListItems(list: HTMLElement) {
     while (wrapper.firstChild) {
       li.insertBefore(wrapper.firstChild, wrapper);
     }
-    wrapper.remove();
+    if (wrapper.parentNode === li) {
+      li.removeChild(wrapper);
+    }
   }
 }
 
@@ -208,6 +210,7 @@ export function ReminderComposer({ onCreate }: Props) {
   });
   const fileInputRef = useRef<HTMLInputElement>(null);
   const bodyEditorRef = useRef<HTMLDivElement>(null);
+  const formatMenuRef = useRef<HTMLDivElement>(null);
   const selectionRangeRef = useRef<Range | null>(null);
 
   const scheduleParts = useMemo(() => splitLocalDatetime(remindAt), [remindAt]);
@@ -400,10 +403,10 @@ export function ReminderComposer({ onCreate }: Props) {
     const range = selection.getRangeAt(0);
     const span = document.createElement("span");
     span.style.color = color;
-    (span.style as CSSStyleDeclaration & { webkitTextFillColor?: string }).webkitTextFillColor = color;
-    span.style.backgroundImage = "none";
-    span.style.backgroundClip = "border-box";
-    (span.style as CSSStyleDeclaration & { webkitBackgroundClip?: string }).webkitBackgroundClip = "border-box";
+    span.style.removeProperty("-webkit-text-fill-color");
+    span.style.removeProperty("background-image");
+    span.style.removeProperty("background-clip");
+    span.style.removeProperty("-webkit-background-clip");
     const fragment = range.extractContents();
     span.appendChild(fragment);
     range.insertNode(span);
@@ -511,14 +514,16 @@ export function ReminderComposer({ onCreate }: Props) {
 
   useEffect(() => {
     function closeFormatMenu(event: Event) {
-      if (event.target instanceof Element && event.target.closest(".text-format-popover")) return;
+      const targetNode = event.target as Node | null;
+      const panel = formatMenuRef.current;
+      if (panel && targetNode && panel.contains(targetNode)) return;
       setFormatMenu((prev) => (prev.open ? { ...prev, open: false } : prev));
     }
-    window.addEventListener("mousedown", closeFormatMenu);
+    window.addEventListener("pointerdown", closeFormatMenu, true);
     window.addEventListener("scroll", closeFormatMenu, true);
     window.addEventListener("resize", closeFormatMenu);
     return () => {
-      window.removeEventListener("mousedown", closeFormatMenu);
+      window.removeEventListener("pointerdown", closeFormatMenu, true);
       window.removeEventListener("scroll", closeFormatMenu, true);
       window.removeEventListener("resize", closeFormatMenu);
     };
@@ -650,7 +655,12 @@ export function ReminderComposer({ onCreate }: Props) {
         />
 
         {formatMenu.open ? (
-          <div className="text-format-popover" style={{ left: formatMenu.x, top: formatMenu.y }} role="menu">
+          <div
+            ref={formatMenuRef}
+            className="text-format-popover"
+            style={{ left: formatMenu.x, top: formatMenu.y }}
+            role="menu"
+          >
             <div className="text-format-popover__row">
               <button
                 type="button"

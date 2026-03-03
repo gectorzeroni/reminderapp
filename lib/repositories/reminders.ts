@@ -27,6 +27,7 @@ type DbReminderRow = {
   id: string;
   user_id: string;
   note: string | null;
+  pinned?: boolean | null;
   status: "upcoming" | "archived";
   archive_reason: "completed" | "auto" | "manual" | null;
   remind_at: string | null;
@@ -203,6 +204,7 @@ function mapReminderRow(row: DbReminderRow): Reminder {
     id: row.id,
     userId: row.user_id,
     note: row.note,
+    pinned: Boolean(row.pinned),
     status: row.status,
     archiveReason: row.archive_reason,
     remindAt: row.remind_at,
@@ -324,6 +326,7 @@ async function createReminderLocal(userId: string, input: CreateReminderInput): 
     id: reminderId,
     userId,
     note: input.note?.trim() || null,
+    pinned: false,
     status: "upcoming",
     archiveReason: null,
     remindAt: input.remindAt ?? null,
@@ -353,6 +356,7 @@ async function updateReminderLocal(userId: string, reminderId: string, input: Up
   const timestamp = nowIso();
   if ("remindAt" in input) reminder.remindAt = input.remindAt ?? null;
   if ("note" in input) reminder.note = input.note?.trim() || null;
+  if ("pinned" in input) reminder.pinned = Boolean(input.pinned);
   if (input.attachments?.length) {
     const nextAttachments = await enrichAttachmentsForCreate(reminderId, input.attachments, timestamp);
     reminder.attachments = reminder.attachments.concat(nextAttachments);
@@ -478,6 +482,7 @@ async function createReminderSupabase(userId: string, input: CreateReminderInput
     id: reminderId,
     user_id: userId,
     note: input.note?.trim() || null,
+    pinned: false,
     status: "upcoming",
     remind_at: input.remindAt ?? null,
     archive_reason: null,
@@ -553,6 +558,10 @@ async function updateReminderSupabase(userId: string, reminderId: string, input:
   }
   if ("note" in input) {
     patch.note = input.note?.trim() || null;
+    shouldUpdateReminder = true;
+  }
+  if ("pinned" in input) {
+    patch.pinned = Boolean(input.pinned);
     shouldUpdateReminder = true;
   }
 

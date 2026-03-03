@@ -277,11 +277,33 @@ select {
   align-content: start;
   justify-items: center;
   min-height: 45vh;
+  padding-top: 20px;
 }
 
 .upcoming-panel.is-centered {
   align-content: center;
   min-height: calc(100vh - 260px);
+}
+
+.reminder-lists {
+  width: min(760px, 100%);
+  display: grid;
+  gap: 34px;
+}
+
+.reminder-section {
+  display: grid;
+  gap: 8px;
+}
+
+.reminder-section__title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
 }
 
 .reminder-grid {
@@ -290,7 +312,7 @@ select {
   padding: 0;
   display: grid;
   gap: 0;
-  width: min(760px, 100%);
+  width: 100%;
   background: transparent;
   border: 0;
   border-radius: 0;
@@ -298,10 +320,15 @@ select {
 
 .reminder-grid > li {
   padding: 20px 0;
+  transition: background-color 140ms ease;
 }
 
 .reminder-grid > li + li {
   border-top: 1px solid var(--stroke);
+}
+
+.reminder-grid > li:hover {
+  background: #f3f3f3;
 }
 
 .reminder-card {
@@ -310,7 +337,7 @@ select {
   border-radius: 0;
   box-shadow: none;
   backdrop-filter: none;
-  padding: 8px 14px;
+  padding: 12px 14px;
   display: grid;
   gap: 8px;
   cursor: pointer;
@@ -322,12 +349,12 @@ select {
 }
 
 .reminder-card:hover {
-  background: #f3f3f3;
+  background: transparent;
 }
 
 .reminder-card.compact {
   border-radius: 0;
-  padding: 8px 14px;
+  padding: 12px 14px;
   gap: 8px;
 }
 
@@ -632,10 +659,15 @@ select {
 
 .archive-list > li {
   padding: 20px 0;
+  transition: background-color 140ms ease;
 }
 
 .archive-list > li + li {
   border-top: 1px solid var(--stroke);
+}
+
+.archive-list > li:hover {
+  background: #f3f3f3;
 }
 
 .attachment-chip {
@@ -1158,9 +1190,9 @@ select {
   position: fixed;
   left: 0;
   right: 0;
-  bottom: 0;
+  bottom: -16px;
   z-index: 15;
-  padding: 14px 14px 20px;
+  padding: 14px 14px 0;
   display: grid;
   place-items: center;
   background: transparent;
@@ -1209,7 +1241,7 @@ select {
   background: #fff;
   border: 1px solid var(--stroke);
   box-shadow: var(--shadow);
-  border-radius: 22px;
+  border-radius: 22px 22px 0 0;
   padding: 16px;
   display: grid;
   gap: 2px;
@@ -1311,6 +1343,7 @@ select {
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
+  padding-bottom: 20px;
 }
 
 .composer-toolbar__right {
@@ -1748,6 +1781,12 @@ select {
   border-radius: 18px;
   padding: 18px;
   max-width: 480px;
+}
+
+.empty-state__emoji {
+  margin: 0 0 6px;
+  font-size: 64px;
+  line-height: 1;
 }
 
 .empty-state.compact {
