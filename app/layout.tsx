@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
-import "@fontsource/inter/index.css";
 import "@fontsource/rubik-burned/index.css";
 import { AgentationOverlay } from "@/components/agentation-overlay";
 import "./globals.css";

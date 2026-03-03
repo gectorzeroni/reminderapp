@@ -681,10 +681,7 @@ export function RemindersApp() {
               onMouseDown={(event) => event.stopPropagation()}
             >
               <div className="archive-panel__header">
-                <div>
-                  <p className="eyebrow">History</p>
-                  <h2>Archive</h2>
-                </div>
+                <h2>Archive</h2>
                 <button className="icon-btn large" onClick={() => setArchiveOpen(false)} aria-label="Close archive">
                   <Close size={18} aria-hidden="true" />
                 </button>
@@ -782,7 +779,7 @@ export function RemindersApp() {
         ) : null}
       </AnimatePresence>
 
-      <div className="bottom-right-controls">
+      <div className="top-right-controls">
         <motion.button
           className="archive-fab icon-only"
           whileHover={{ scale: 1.12 }}
@@ -794,7 +791,6 @@ export function RemindersApp() {
         >
           <Archive size={18} aria-hidden="true" />
         </motion.button>
-
         <div className="settings-anchor settings-anchor--floating">
           <Popover>
             <PopoverTrigger asChild>
@@ -809,7 +805,7 @@ export function RemindersApp() {
               </motion.button>
             </PopoverTrigger>
             <PopoverContent
-              side="top"
+              side="bottom"
               align="end"
               sideOffset={10}
               className="account-popover p-0"

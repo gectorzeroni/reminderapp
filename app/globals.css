@@ -1,9 +1,10 @@
+@import url("https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800&display=swap");
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  --font-inter: "Inter Variable", "Inter";
+  --font-inter: "Nunito", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
   --font-display: "Rubik Burned";
   --bg: #f7f7f8;
   --bg-accent: none;
@@ -34,9 +35,19 @@ body {
 }
 
 body {
-  font-family: var(--font-inter), "Segoe UI", sans-serif;
+  font-family: var(--font-inter);
+  font-weight: 400;
   background: var(--bg);
   color: var(--text);
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-weight: 600;
 }
 
 a {
@@ -197,10 +208,15 @@ select {
   height: 40px;
   border-radius: 999px;
   border: 1px solid var(--stroke);
-  background: linear-gradient(180deg, #f4f8ff, #dde8fb);
-  box-shadow: var(--shadow);
+  background: var(--bg);
+  box-shadow: none;
   cursor: pointer;
   font-weight: 700;
+  color: #0f67ff;
+}
+
+.avatar-btn:hover {
+  background: var(--bg);
 }
 
 .settings-menu {
@@ -245,7 +261,7 @@ select {
 
 .settings-title {
   margin: 0;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .settings-subtle {
@@ -367,7 +383,7 @@ select {
 .reminder-card__header h3 {
   margin: 0;
   font-size: 22px;
-  font-weight: 500;
+  font-weight: 600;
   line-height: 1.2;
 }
 
@@ -399,7 +415,7 @@ select {
 .reminder-card__header-main h3 {
   margin: 0;
   font-size: 22px;
-  font-weight: 500;
+  font-weight: 600;
   line-height: 1.2;
   white-space: nowrap;
   overflow: hidden;
@@ -587,6 +603,8 @@ select {
   margin: 6px 0 0;
   color: var(--muted);
   font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
 }
 
 .state-pill.overdue {
@@ -1078,9 +1096,6 @@ select {
 }
 
 .archive-fab {
-  position: fixed;
-  right: 18px;
-  bottom: 110px;
   z-index: 18;
   border: 1px solid var(--stroke);
   border-radius: 999px;
@@ -1099,13 +1114,20 @@ select {
   display: grid;
   place-items: center;
   font-size: 1.1rem;
+  border: 1px solid var(--stroke);
+  background: var(--bg);
+  box-shadow: none;
 }
 
-.bottom-right-controls {
+.archive-fab.icon-only:hover {
+  background: var(--bg);
+}
+
+.top-right-controls {
   position: fixed;
   right: 18px;
-  bottom: 14px;
-  z-index: 21;
+  top: 18px;
+  z-index: 23;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -1178,6 +1200,11 @@ select {
 
 .archive-toolbar__icon-btn {
   flex-shrink: 0;
+  background: var(--bg);
+}
+
+.archive-toolbar__icon-btn:hover {
+  background: var(--bg);
 }
 
 .archive-list {
@@ -1263,7 +1290,7 @@ select {
   border: 0;
   min-height: 0;
   padding: 0 4px 1px;
-  font-weight: 500;
+  font-weight: 600;
   font-size: 22px;
   line-height: 1.2;
   letter-spacing: 0;
@@ -1322,14 +1349,13 @@ select {
   border-radius: 999px;
   border: 1px solid var(--stroke);
   background: rgba(255, 255, 255, 0.9);
-  color: var(--muted);
+  color: var(--text);
   display: grid;
   place-items: center;
   cursor: pointer;
 }
 
 .composer-attach-icon:hover {
-  color: var(--text);
   background: #fff;
 }
 
@@ -1851,17 +1877,9 @@ select {
     max-height: none;
   }
 
-  .archive-fab {
-    bottom: 124px;
-  }
-
-  .archive-fab.icon-only {
-    bottom: auto;
-  }
-
-  .bottom-right-controls {
+  .top-right-controls {
     right: 14px;
-    bottom: 14px;
+    top: 14px;
     gap: 8px;
   }
 
