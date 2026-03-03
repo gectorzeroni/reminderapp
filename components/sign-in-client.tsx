@@ -2,7 +2,7 @@
 
 import * as motion from "motion/react-client";
 import { useSearchParams } from "next/navigation";
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 
 export function SignInClient() {
@@ -11,11 +11,17 @@ export function SignInClient() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [demoLoading, setDemoLoading] = useState(false);
+  const [canUseLocalDemo, setCanUseLocalDemo] = useState(false);
   const params = useSearchParams();
-  const canUseLocalDemo =
-    process.env.NODE_ENV !== "production" &&
-    typeof window !== "undefined" &&
-    (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+
+  useEffect(() => {
+    if (process.env.NODE_ENV === "production") {
+      setCanUseLocalDemo(false);
+      return;
+    }
+    const host = window.location.hostname;
+    setCanUseLocalDemo(host === "localhost" || host === "127.0.0.1");
+  }, []);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -63,27 +69,22 @@ export function SignInClient() {
   }
 
   return (
-    <div style={{ display: "grid", gap: 12 }}>
+    <div className="sign-in-form-wrap">
       {params.get("error") ? (
-        <p style={{ color: "#b73333", margin: 0 }}>
+        <p className="sign-in-message sign-in-message--error">
           Auth error: {params.get("error")}
         </p>
       ) : null}
-      <form onSubmit={handleSubmit} style={{ display: "grid", gap: 10 }}>
-        <label style={{ display: "grid", gap: 6 }}>
-          <span>Email</span>
+      <form onSubmit={handleSubmit} className="sign-in-form">
+        <label className="sign-in-field">
+          <span className="sr-only">Email</span>
           <input
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder="you@example.com"
+            placeholder="youremail@example.com"
             required
-            style={{
-              minHeight: 40,
-              borderRadius: 10,
-              border: "1px solid rgba(0,0,0,0.15)",
-              padding: "8px 10px"
-            }}
+            className="sign-in-input"
           />
         </label>
         <motion.button
@@ -91,16 +92,9 @@ export function SignInClient() {
           disabled={submitting}
           whileHover={submitting ? undefined : { scale: 1.04 }}
           whileTap={submitting ? undefined : { scale: 0.96 }}
-          style={{
-            minHeight: 42,
-            borderRadius: 999,
-            border: "1px solid rgba(9,72,207,.5)",
-            background: "linear-gradient(180deg, #0f67ff, #0948cf)",
-            color: "#fff",
-            cursor: "pointer"
-          }}
+          className="btn primary sign-in-submit-btn"
         >
-          {submitting ? "Sending..." : "Send magic link"}
+          {submitting ? "Sending..." : "Send me the link"}
         </motion.button>
       </form>
 
@@ -111,21 +105,14 @@ export function SignInClient() {
           whileHover={demoLoading ? undefined : { scale: 1.04 }}
           whileTap={demoLoading ? undefined : { scale: 0.96 }}
           onClick={() => void handleDemoLogin()}
-          style={{
-            minHeight: 40,
-            borderRadius: 999,
-            border: "1px solid rgba(0,0,0,0.16)",
-            background: "#fff",
-            color: "#201f1a",
-            cursor: "pointer"
-          }}
+          className="btn sign-in-demo-btn"
         >
           {demoLoading ? "Opening demo..." : "Continue as demo (localhost only)"}
         </motion.button>
       ) : null}
 
-      {status ? <p style={{ color: "#11773a", margin: 0 }}>{status}</p> : null}
-      {error ? <p style={{ color: "#b73333", margin: 0 }}>{error}</p> : null}
+      {status ? <p className="sign-in-message sign-in-message--success">{status}</p> : null}
+      {error ? <p className="sign-in-message sign-in-message--error">{error}</p> : null}
     </div>
   );
 }
