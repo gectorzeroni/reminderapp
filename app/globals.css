@@ -75,7 +75,7 @@ a {
 }
 
 .sign-in-hero {
-  width: min(640px, 100%);
+  width: min(520px, 100%);
   aspect-ratio: 0.82;
   border-radius: 999px;
   background: linear-gradient(180deg, #0f67ff 0%, #0948cf 100%);
@@ -91,7 +91,7 @@ a {
 }
 
 .sign-in-hero-mark {
-  width: min(300px, 42%);
+  width: 200px !important;
   display: grid;
   place-items: center;
 }
