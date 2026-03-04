@@ -129,6 +129,31 @@ a {
   gap: 12px;
 }
 
+.sign-in-method-switch,
+.sign-in-password-mode {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.sign-in-method-btn,
+.sign-in-password-mode-btn {
+  min-height: 34px;
+  border-radius: 999px;
+  border: 1px solid var(--stroke);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.sign-in-method-btn.is-active,
+.sign-in-password-mode-btn.is-active {
+  border-color: rgba(9, 72, 207, 0.45);
+  background: rgba(15, 103, 255, 0.08);
+  color: #0948cf;
+}
+
 .sign-in-form {
   display: grid;
   gap: 16px;
@@ -159,6 +184,22 @@ a {
 
 .sign-in-demo-btn {
   min-height: 42px;
+}
+
+.sign-in-forgot-btn {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  text-align: left;
+  font-size: 12px;
+  color: rgba(4, 5, 26, 0.72);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.sign-in-forgot-btn:hover {
+  color: #0f67ff;
 }
 
 .sign-in-message {
