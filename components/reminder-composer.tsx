@@ -638,7 +638,7 @@ export function ReminderComposer({ onCreate }: Props) {
 
         <div
           ref={bodyEditorRef}
-          className="composer-body-input"
+          className="composer-body-input rich-text"
           contentEditable
           suppressContentEditableWarning
           role="textbox"
