@@ -7,6 +7,7 @@ import {
   type FormEvent,
   type KeyboardEvent,
   type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
   useEffect,
   useMemo,
   useRef,
@@ -35,14 +36,17 @@ type PendingDeletion = {
   timerId: number;
 };
 
+type LongPressGesture = {
+  noteId: string;
+  pointerId: number;
+  timerId: number;
+  x: number;
+  y: number;
+};
+
 const dayFormatter = new Intl.DateTimeFormat("en-US", {
   month: "short",
   day: "numeric"
-});
-
-const timeFormatter = new Intl.DateTimeFormat("en-US", {
-  hour: "numeric",
-  minute: "2-digit"
 });
 
 function startOfWeek(value: string) {
@@ -111,6 +115,7 @@ export function NotesApp() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
+  const longPressRef = useRef<LongPressGesture | null>(null);
   const pendingDeletionRef = useRef<PendingDeletion | null>(null);
   const shouldScrollToLatestRef = useRef(true);
   const scrollBehaviorRef = useRef<ScrollBehavior>("auto");
@@ -210,6 +215,8 @@ export function NotesApp() {
 
   useEffect(
     () => () => {
+      const longPress = longPressRef.current;
+      if (longPress) window.clearTimeout(longPress.timerId);
       const pending = pendingDeletionRef.current;
       if (!pending) return;
       window.clearTimeout(pending.timerId);
@@ -260,16 +267,20 @@ export function NotesApp() {
     });
   }
 
-  function openNoteMenu(event: ReactMouseEvent<HTMLElement>, noteId: string) {
-    event.preventDefault();
+  function showNoteMenu(noteId: string, x: number, y: number) {
     const menuWidth = 176;
     const menuHeight = 60;
     const gutter = 10;
     setContextMenu({
       noteId,
-      x: Math.max(gutter, Math.min(event.clientX, window.innerWidth - menuWidth - gutter)),
-      y: Math.max(gutter, Math.min(event.clientY, window.innerHeight - menuHeight - gutter))
+      x: Math.max(gutter, Math.min(x, window.innerWidth - menuWidth - gutter)),
+      y: Math.max(gutter, Math.min(y, window.innerHeight - menuHeight - gutter))
     });
+  }
+
+  function openNoteMenu(event: ReactMouseEvent<HTMLElement>, noteId: string) {
+    event.preventDefault();
+    showNoteMenu(noteId, event.clientX, event.clientY);
   }
 
   function openNoteMenuFromKeyboard(event: KeyboardEvent<HTMLElement>, noteId: string) {
@@ -277,14 +288,40 @@ export function NotesApp() {
     if (!isContextMenuKey) return;
     event.preventDefault();
     const rect = event.currentTarget.getBoundingClientRect();
-    const menuWidth = 176;
-    const menuHeight = 60;
-    const gutter = 10;
-    setContextMenu({
+    showNoteMenu(noteId, rect.right - 176, rect.top + 16);
+  }
+
+  function cancelLongPress(pointerId?: number) {
+    const gesture = longPressRef.current;
+    if (!gesture || (pointerId != null && gesture.pointerId !== pointerId)) return;
+    window.clearTimeout(gesture.timerId);
+    longPressRef.current = null;
+  }
+
+  function startLongPress(event: ReactPointerEvent<HTMLElement>, noteId: string) {
+    if (event.pointerType !== "touch") return;
+    cancelLongPress();
+    const gesture: LongPressGesture = {
       noteId,
-      x: Math.max(gutter, Math.min(rect.right - menuWidth, window.innerWidth - menuWidth - gutter)),
-      y: Math.max(gutter, Math.min(rect.top + 16, window.innerHeight - menuHeight - gutter))
-    });
+      pointerId: event.pointerId,
+      timerId: 0,
+      x: event.clientX,
+      y: event.clientY
+    };
+    gesture.timerId = window.setTimeout(() => {
+      if (longPressRef.current?.pointerId !== gesture.pointerId) return;
+      longPressRef.current = null;
+      showNoteMenu(gesture.noteId, gesture.x, gesture.y);
+    }, 550);
+    longPressRef.current = gesture;
+  }
+
+  function moveLongPress(event: ReactPointerEvent<HTMLElement>) {
+    const gesture = longPressRef.current;
+    if (!gesture || gesture.pointerId !== event.pointerId) return;
+    if (Math.hypot(event.clientX - gesture.x, event.clientY - gesture.y) > 10) {
+      cancelLongPress(event.pointerId);
+    }
   }
 
   async function persistDeletion(pending: PendingDeletion) {
@@ -371,6 +408,7 @@ export function NotesApp() {
           aria-label="Your notes"
           aria-busy={loading}
           onScroll={() => {
+            cancelLongPress();
             syncActiveWeek();
             setContextMenu(null);
           }}
@@ -397,12 +435,10 @@ export function NotesApp() {
                 >
                   <div className="notes-week__heading">
                     <h2 id={`week-label-${group.key}`}>{group.label}</h2>
-                    <span>{group.notes.length}</span>
                   </div>
                   <div className="notes-week__items">
                     <AnimatePresence initial={false}>
                       {group.notes.map((note) => {
-                        const createdAt = new Date(note.createdAt);
                         const text = parseStoredNote(note.note).plainText;
                         return (
                           <motion.article
@@ -414,14 +450,16 @@ export function NotesApp() {
                             transition={{ type: "spring", duration: 0.3, bounce: 0 }}
                             className={`note-row ${contextMenu?.noteId === note.id ? "has-open-menu" : ""}`}
                             tabIndex={0}
-                            aria-label={`Note from ${createdAt.toLocaleString()}. Right-click for actions.`}
                             onContextMenu={(event) => openNoteMenu(event, note.id)}
                             onKeyDown={(event) => openNoteMenuFromKeyboard(event, note.id)}
+                            onPointerDown={(event) => startLongPress(event, note.id)}
+                            onPointerMove={moveLongPress}
+                            onPointerUp={(event) => cancelLongPress(event.pointerId)}
+                            onPointerCancel={(event) => cancelLongPress(event.pointerId)}
+                            onPointerLeave={(event) => cancelLongPress(event.pointerId)}
                           >
                             <p>{text}</p>
-                            <time dateTime={note.createdAt} title={createdAt.toLocaleString()}>
-                              {timeFormatter.format(createdAt)}
-                            </time>
+                            <span className="sr-only">Right-click or press and hold for note actions.</span>
                           </motion.article>
                         );
                       })}
@@ -449,7 +487,6 @@ export function NotesApp() {
                   <span className="timeline-tick__mark" aria-hidden="true" />
                   <span className="timeline-tick__label" aria-hidden="true">
                     <strong>{group.label}</strong>
-                    <small>{group.notes.length} {group.notes.length === 1 ? "note" : "notes"}</small>
                   </span>
                 </button>
               ))}
