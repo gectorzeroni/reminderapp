@@ -1,3 +1,4 @@
+import { marked } from "marked";
 const NOTE_PREFIX = "__later_note_v1__:";
 
 export type ParsedNote = {
@@ -10,7 +11,10 @@ export type ParsedNote = {
 function stripHtml(html: string): string {
   return html
     .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/div>/gi, "\n")
     .replace(/<\/p>/gi, "\n")
+    .replace(/<\/blockquote>/gi, "\n")
+    .replace(/<\/h[1-4]>/gi, "\n")
     .replace(/<\/li>/gi, "\n")
     .replace(/<[^>]+>/g, "")
     .replace(/\u00a0/g, " ")
@@ -30,6 +34,12 @@ export function escapeHtml(text: string): string {
 export function textToHtml(text: string): string {
   if (!text.trim()) return "";
   return escapeHtml(text).replace(/\n/g, "<br>");
+}
+
+export function markdownToHtml(markdown: string): string {
+  if (!markdown.trim()) return "";
+  const html = marked.parse(markdown, { gfm: true, breaks: true }) as string;
+  return sanitizeNoteHtml(html);
 }
 
 export function sanitizeNoteHtml(input: string): string {
@@ -143,8 +153,15 @@ export function sanitizeNoteHtml(input: string): string {
   });
   html = html.replace(/<\/font>/gi, "</span>");
 
-  html = html.replace(/<(?!\/?(b|strong|i|em|u|s|br|p|ul|ol|li|span)\b)[^>]*>/gi, "");
-  html = html.replace(/<(\/?)(b|strong|i|em|u|s|br|p)(?:\s[^>]*)?>/gi, "<$1$2>");
+  html = html.replace(/<(?!\/?(a|b|strong|i|em|u|s|br|p|div|h1|h2|h3|h4|blockquote|ul|ol|li|span)\b)[^>]*>/gi, "");
+  html = html.replace(/<(\/?)(b|strong|i|em|u|s|br|p|div|h1|h2|h3|h4|blockquote)(?:\s[^>]*)?>/gi, "<$1$2>");
+  html = html.replace(/<a(?:\s[^>]*)?>/gi, (tag) => {
+    const hrefMatch = tag.match(/\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i);
+    const hrefRaw = (hrefMatch?.[1] ?? hrefMatch?.[2] ?? hrefMatch?.[3] ?? "").trim();
+    const safeHref = /^https?:\/\//i.test(hrefRaw) ? hrefRaw : "";
+    return safeHref ? `<a href="${safeHref}" target="_blank" rel="noopener noreferrer">` : "<a>";
+  });
+  html = html.replace(/<\/a(?:\s[^>]*)?>/gi, "</a>");
   html = html.replace(/<ul(?:\s[^>]*)?>/gi, (tag) => {
     const dataListMatch = tag.match(/\bdata-list\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i);
     const dataListRaw = (dataListMatch?.[1] ?? dataListMatch?.[2] ?? dataListMatch?.[3] ?? "").trim().toLowerCase();
@@ -175,7 +192,7 @@ export function sanitizeNoteHtml(input: string): string {
 }
 
 export function serializeNote(title: string, bodyHtml: string, tags: string[] = []): string {
-  const safeTitle = title.trim();
+  const safeTitle = "";
   const safeBody = sanitizeNoteHtml(bodyHtml);
   const safeTags = Array.from(new Set(tags.map((tag) => tag.trim().toLowerCase()).filter(Boolean)));
   return `${NOTE_PREFIX}${JSON.stringify({ title: safeTitle, bodyHtml: safeBody, tags: safeTags })}`;
@@ -188,23 +205,21 @@ export function parseStoredNote(note: string | null | undefined): ParsedNote {
   if (raw.startsWith(NOTE_PREFIX)) {
     try {
       const payload = JSON.parse(raw.slice(NOTE_PREFIX.length)) as { title?: string; bodyHtml?: string; tags?: string[] };
-      const title = (payload.title ?? "").trim();
+      const legacyTitle = (payload.title ?? "").trim();
       const bodyHtml = sanitizeNoteHtml(payload.bodyHtml ?? "");
+      const mergedBodyHtml = sanitizeNoteHtml([legacyTitle ? textToHtml(legacyTitle) : "", bodyHtml].filter(Boolean).join("<br>"));
       const tags = Array.from(new Set((payload.tags ?? []).map((tag) => tag.trim().toLowerCase()).filter(Boolean)));
-      const plainText = [title, stripHtml(bodyHtml), tags.map((tag) => `#${tag}`).join(" ")]
+      const plainText = [stripHtml(mergedBodyHtml), tags.map((tag) => `#${tag}`).join(" ")]
         .filter(Boolean)
         .join("\n")
         .trim();
-      return { title, bodyHtml, tags, plainText };
+      return { title: "", bodyHtml: mergedBodyHtml, tags, plainText };
     } catch {
       // fall through to legacy parsing
     }
   }
 
-  const lines = raw.split("\n");
-  const legacyTitle = (lines[0] ?? "").trim();
-  const legacyBody = lines.slice(1).join("\n").trim();
-  const bodyHtml = textToHtml(legacyBody);
-  const plainText = [legacyTitle, legacyBody].filter(Boolean).join("\n").trim();
-  return { title: legacyTitle, bodyHtml, tags: [], plainText };
+  const bodyHtml = textToHtml(raw);
+  const plainText = raw.trim();
+  return { title: "", bodyHtml, tags: [], plainText };
 }

@@ -21,6 +21,10 @@ const reminderAttachmentSchema = z.object({
   metadataStatus: z.enum(["pending", "ready", "failed"]).optional()
 });
 
+export const createNoteSchema = z.object({
+  text: z.string().trim().min(1, "Note cannot be empty").max(5000)
+});
+
 export const createReminderSchema = z
   .object({
     note: z.string().trim().max(5000).optional().nullable(),

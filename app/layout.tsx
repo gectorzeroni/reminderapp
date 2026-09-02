@@ -6,7 +6,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Later™",
-  description: "Drop anything and get reminded at the right time."
+  description: "A quiet timeline for your notes."
 };
 
 export default function RootLayout({

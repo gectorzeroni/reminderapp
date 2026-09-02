@@ -1,13 +1,14 @@
 "use client";
 
 import * as motion from "motion/react-client";
-import type { ClipboardEvent, DragEvent, FormEvent, KeyboardEvent, MouseEvent } from "react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import type { ClipboardEvent, DragEvent, FormEvent } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { AnnotationText, Attachment, Calendar, Close, File, Image, Link } from "griddy-icons";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/animate-ui/components/radix/popover";
+import { MarkdownBodyEditor } from "@/components/markdown-body-editor";
 import { MAX_ATTACHMENTS } from "@/lib/constants";
 import { getTagChipStyle } from "@/lib/tag-colors";
-import { extractTagsFromText, extractUrlsFromText, isLikelyUrl, stripTagsFromHtml, stripTagsFromText } from "@/lib/parse";
+import { extractTagsFromText, extractUrlsFromText, isLikelyUrl, stripTagsFromHtml } from "@/lib/parse";
 import { sanitizeNoteHtml, serializeNote, textToHtml } from "@/lib/note";
 import type { CreateAttachmentInput } from "@/lib/types";
 
@@ -18,6 +19,15 @@ type DraftAttachment = CreateAttachmentInput & {
 
 type Props = {
   onCreate: (payload: { note: string; remindAt: string | null; attachments: CreateAttachmentInput[] }) => Promise<void>;
+  hideSubmitButton?: boolean;
+  onRemindAtChange?: (remindAt: string | null) => void;
+};
+
+export type ReminderComposerHandle = {
+  submitIfDirty: () => Promise<boolean>;
+  focusBody: () => void;
+  openSchedule: () => void;
+  openFilePicker: () => void;
 };
 
 function fileToDataUrl(file: File): Promise<string> {
@@ -32,12 +42,6 @@ function fileToDataUrl(file: File): Promise<string> {
 function makeLocalId() {
   return Math.random().toString(36).slice(2);
 }
-
-const TEXT_COLOR_PRESETS = ["#111827", "#2563eb", "#c2410c", "#059669"] as const;
-const TEXT_GRADIENT_PRESETS = [
-  "linear-gradient(90deg, #2563eb 0%, #7c3aed 100%)",
-  "linear-gradient(90deg, #f97316 0%, #ef4444 100%)"
-] as const;
 
 function toLocalDatetimeValue(date: Date) {
   const copy = new Date(date);
@@ -102,84 +106,6 @@ function htmlToPlainText(html: string): string {
     .trim();
 }
 
-function getListContext(selection: Selection | null) {
-  if (!selection || selection.rangeCount === 0) return { list: null as HTMLElement | null, item: null as HTMLElement | null };
-  const range = selection.getRangeAt(0);
-  const anchor =
-    range.commonAncestorContainer instanceof Element
-      ? range.commonAncestorContainer
-      : range.commonAncestorContainer.parentElement;
-  const item = anchor?.closest("li") as HTMLElement | null;
-  const list = item?.closest("ul,ol") as HTMLElement | null;
-  return { list, item };
-}
-
-function exitListToParagraph(editor: HTMLElement, selection: Selection) {
-  const { list, item } = getListContext(selection);
-  if (!list || !item) return false;
-  const text = item.textContent?.replace(/\u200b/g, "").trim() ?? "";
-  if (!text) item.remove();
-  if (!list.querySelector("li")) list.remove();
-  const container = list.isConnected ? list : editor;
-  const paragraph = document.createElement("p");
-  paragraph.appendChild(document.createElement("br"));
-  if (container.parentNode) {
-    container.parentNode.insertBefore(paragraph, container.nextSibling);
-  } else {
-    editor.appendChild(paragraph);
-  }
-  const range = document.createRange();
-  range.setStart(paragraph, 0);
-  range.collapse(true);
-  selection.removeAllRanges();
-  selection.addRange(range);
-  return true;
-}
-
-function normalizeTodoItems(list: HTMLElement) {
-  for (const li of Array.from(list.querySelectorAll(":scope > li"))) {
-    if (li.getAttribute("data-checked") !== "true") {
-      li.removeAttribute("data-checked");
-    }
-    const existingWrapper = li.querySelector(":scope > span[data-todo-text]") as HTMLSpanElement | null;
-    if (existingWrapper) continue;
-    const wrapper = document.createElement("span");
-    wrapper.setAttribute("data-todo-text", "true");
-    const movableNodes = Array.from(li.childNodes).filter((node) => {
-      if (!(node instanceof HTMLElement)) return true;
-      return node.tagName !== "UL" && node.tagName !== "OL";
-    });
-    for (const node of movableNodes) {
-      wrapper.appendChild(node);
-    }
-    li.insertBefore(wrapper, li.firstChild);
-  }
-}
-
-function normalizeStandardListItems(list: HTMLElement) {
-  list.removeAttribute("data-list");
-  for (const li of Array.from(list.querySelectorAll(":scope > li"))) {
-    li.removeAttribute("data-checked");
-    const wrapper = li.querySelector(":scope > span[data-todo-text]") as HTMLSpanElement | null;
-    if (!wrapper) continue;
-    while (wrapper.firstChild) {
-      li.insertBefore(wrapper.firstChild, wrapper);
-    }
-    if (wrapper.parentNode === li) {
-      li.removeChild(wrapper);
-    }
-  }
-}
-
-function toggleTodoItemChecked(item: HTMLElement) {
-  const checked = item.getAttribute("data-checked") === "true";
-  if (checked) {
-    item.removeAttribute("data-checked");
-  } else {
-    item.setAttribute("data-checked", "true");
-  }
-}
-
 async function fileToAttachment(file: File): Promise<DraftAttachment> {
   const isImage = file.type.startsWith("image/");
   const previewImageUrl = isImage ? await fileToDataUrl(file) : null;
@@ -195,31 +121,31 @@ async function fileToAttachment(file: File): Promise<DraftAttachment> {
   };
 }
 
-export function ReminderComposer({ onCreate }: Props) {
-  const [title, setTitle] = useState("");
+export const ReminderComposer = forwardRef<ReminderComposerHandle, Props>(function ReminderComposer(
+  { onCreate, hideSubmitButton = false, onRemindAtChange }: Props,
+  ref
+) {
   const [bodyHtml, setBodyHtml] = useState("");
   const [remindAt, setRemindAt] = useState("");
   const [attachments, setAttachments] = useState<DraftAttachment[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [scheduleOpen, setScheduleOpen] = useState(false);
-  const [formatMenu, setFormatMenu] = useState<{ open: boolean; x: number; y: number }>({
-    open: false,
-    x: 0,
-    y: 0
-  });
+  const submitLockRef = useRef(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const bodyEditorRef = useRef<HTMLDivElement>(null);
-  const formatMenuRef = useRef<HTMLDivElement>(null);
-  const selectionRangeRef = useRef<Range | null>(null);
+  const markdownEditorRef = useRef<HTMLDivElement>(null);
 
   const scheduleParts = useMemo(() => splitLocalDatetime(remindAt), [remindAt]);
   const scheduleLabel = useMemo(() => formatSchedulePill(remindAt), [remindAt]);
   const bodyText = useMemo(() => htmlToPlainText(bodyHtml), [bodyHtml]);
-  const tags = useMemo(() => extractTagsFromText([title, bodyText].filter(Boolean).join("\n")), [title, bodyText]);
+  const tags = useMemo(() => extractTagsFromText(bodyText), [bodyText]);
   const allAttachments = useMemo(() => attachments, [attachments]);
-  const hasContent = title.trim().length > 0 || bodyText.trim().length > 0 || attachments.length > 0;
+  const hasContent = bodyText.trim().length > 0 || attachments.length > 0;
   const capacityRemaining = MAX_ATTACHMENTS - attachments.length;
+
+  useEffect(() => {
+    onRemindAtChange?.(remindAt ? new Date(remindAt).toISOString() : null);
+  }, [onRemindAtChange, remindAt]);
 
   async function addFiles(files: FileList | File[]) {
     const list = Array.from(files).slice(0, capacityRemaining);
@@ -295,22 +221,11 @@ export function ReminderComposer({ onCreate }: Props) {
         }));
 
       const stripped = trimmed.replace(/\bhttps?:\/\/[^\s<>"']+/gi, "").trim();
-      if (!title.trim() && stripped) {
-        setTitle(stripped.split("\n")[0]?.slice(0, 180) ?? stripped.slice(0, 180));
-      } else if (stripped) {
+      if (stripped) {
         setBodyEditorHtml(`${bodyHtml}${bodyHtml ? "<br>" : ""}${textToHtml(stripped)}`);
       }
 
       setAttachments((prev) => [...prev, ...urlAttachments].slice(0, MAX_ATTACHMENTS));
-      return;
-    }
-
-    if (!title.trim()) {
-      const [firstLine, ...rest] = trimmed.split("\n");
-      setTitle(firstLine.slice(0, 180));
-      if (rest.join("\n").trim()) {
-        setBodyEditorHtml(textToHtml(rest.join("\n").trim()));
-      }
       return;
     }
 
@@ -339,117 +254,6 @@ export function ReminderComposer({ onCreate }: Props) {
     }
   }
 
-  function onBodyKeyDown(event: KeyboardEvent<HTMLDivElement>) {
-    if (event.key !== "Enter") return;
-    const selection = window.getSelection();
-    const { list } = getListContext(selection);
-    if (list) {
-      if (event.shiftKey && selection) {
-        event.preventDefault();
-        if (exitListToParagraph(event.currentTarget, selection)) {
-          setBodyEditorHtml(event.currentTarget.innerHTML);
-        }
-      }
-      return;
-    }
-    if (event.shiftKey) return;
-    event.preventDefault();
-    event.currentTarget.closest("form")?.requestSubmit();
-  }
-
-  function onBodyMouseDown(event: MouseEvent<HTMLDivElement>) {
-    const target = event.target as HTMLElement | null;
-    if (!target) return;
-    const item = target.closest('ul[data-list="todo"] > li') as HTMLElement | null;
-    if (!item) return;
-    const list = item.closest('ul[data-list="todo"]') as HTMLElement | null;
-    if (list) normalizeTodoItems(list);
-    const rect = item.getBoundingClientRect();
-    if (event.clientX - rect.left > 30) return;
-    event.preventDefault();
-    toggleTodoItemChecked(item);
-    if (bodyEditorRef.current) {
-      setBodyEditorHtml(bodyEditorRef.current.innerHTML);
-    }
-  }
-
-  function applyFormatting(command: "bold" | "italic" | "underline" | "strikeThrough") {
-    const editor = bodyEditorRef.current;
-    if (!editor) return;
-    const selection = window.getSelection();
-    editor.focus();
-    if (selectionRangeRef.current && selection) {
-      selection.removeAllRanges();
-      selection.addRange(selectionRangeRef.current);
-    }
-    document.execCommand(command);
-    if (selection?.rangeCount) {
-      selectionRangeRef.current = selection.getRangeAt(0).cloneRange();
-    }
-    setBodyEditorHtml(editor.innerHTML);
-    setFormatMenu((prev) => ({ ...prev, open: false }));
-  }
-
-  function applyTextColor(color: string) {
-    const editor = bodyEditorRef.current;
-    if (!editor) return;
-    const selection = window.getSelection();
-    editor.focus();
-    if (selectionRangeRef.current && selection) {
-      selection.removeAllRanges();
-      selection.addRange(selectionRangeRef.current);
-    }
-    if (!selection || selection.rangeCount === 0 || selection.isCollapsed) return;
-    const range = selection.getRangeAt(0);
-    const span = document.createElement("span");
-    span.style.color = color;
-    span.style.removeProperty("-webkit-text-fill-color");
-    span.style.removeProperty("background-image");
-    span.style.removeProperty("background-clip");
-    span.style.removeProperty("-webkit-background-clip");
-    const fragment = range.extractContents();
-    span.appendChild(fragment);
-    range.insertNode(span);
-    const newRange = document.createRange();
-    newRange.selectNodeContents(span);
-    selection.removeAllRanges();
-    selection.addRange(newRange);
-    selectionRangeRef.current = newRange.cloneRange();
-    if (selection?.rangeCount) {
-      selectionRangeRef.current = selection.getRangeAt(0).cloneRange();
-    }
-    setBodyEditorHtml(editor.innerHTML);
-    setFormatMenu((prev) => ({ ...prev, open: false }));
-  }
-
-  function applyGradientText(gradient: string) {
-    const editor = bodyEditorRef.current;
-    if (!editor) return;
-    const selection = window.getSelection();
-    editor.focus();
-    if (selectionRangeRef.current && selection) {
-      selection.removeAllRanges();
-      selection.addRange(selectionRangeRef.current);
-    }
-    if (!selection || selection.rangeCount === 0 || selection.isCollapsed) return;
-    const range = selection.getRangeAt(0);
-    const span = document.createElement("span");
-    span.style.backgroundImage = gradient;
-    span.style.backgroundClip = "text";
-    (span.style as CSSStyleDeclaration & { webkitBackgroundClip?: string }).webkitBackgroundClip = "text";
-    span.style.color = "transparent";
-    (span.style as CSSStyleDeclaration & { webkitTextFillColor?: string }).webkitTextFillColor = "transparent";
-    const fragment = range.extractContents();
-    span.appendChild(fragment);
-    range.insertNode(span);
-    const newRange = document.createRange();
-    newRange.selectNodeContents(span);
-    selection.removeAllRanges();
-    selection.addRange(newRange);
-    selectionRangeRef.current = newRange.cloneRange();
-    setBodyEditorHtml(editor.innerHTML);
-    setFormatMenu((prev) => ({ ...prev, open: false }));
-  }
 
   function getAttachmentHref(attachment: DraftAttachment): string | null {
     if (attachment.kind === "link" && attachment.url) return attachment.url;
@@ -461,73 +265,6 @@ export function ReminderComposer({ onCreate }: Props) {
     window.open(href, "_blank", "noopener,noreferrer");
   }
 
-  function openFormatMenuFromSelection(clientX?: number, clientY?: number, allowCollapsed = false) {
-    const editor = bodyEditorRef.current;
-    const selection = window.getSelection();
-    if (!editor || !selection || selection.rangeCount === 0) return;
-    if (!allowCollapsed && selection.isCollapsed) return;
-    if (!allowCollapsed && !selection.toString().trim()) return;
-    const range = selection.getRangeAt(0);
-    if (!editor.contains(range.commonAncestorContainer)) return;
-    selectionRangeRef.current = range.cloneRange();
-    if (typeof clientX === "number" && typeof clientY === "number") {
-      setFormatMenu({ open: true, x: clientX, y: clientY });
-      return;
-    }
-    const rect = range.getBoundingClientRect();
-    const x = rect.left + rect.width / 2;
-    const y = rect.top;
-    setFormatMenu({ open: true, x, y });
-  }
-
-  function applyList(type: "todo" | "bullet" | "numbered") {
-    const editor = bodyEditorRef.current;
-    if (!editor) return;
-    const selection = window.getSelection();
-    editor.focus();
-    if (selectionRangeRef.current && selection) {
-      selection.removeAllRanges();
-      selection.addRange(selectionRangeRef.current);
-    }
-
-    document.execCommand(type === "numbered" ? "insertOrderedList" : "insertUnorderedList");
-
-    const activeSelection = window.getSelection();
-    const { list } = getListContext(activeSelection);
-    if (list?.tagName === "UL") {
-      if (type === "todo") {
-        list.setAttribute("data-list", "todo");
-        normalizeTodoItems(list);
-      } else {
-        normalizeStandardListItems(list);
-      }
-    } else if (list?.tagName === "OL") {
-      normalizeStandardListItems(list);
-    }
-
-    if (selection?.rangeCount) {
-      selectionRangeRef.current = selection.getRangeAt(0).cloneRange();
-    }
-    setBodyEditorHtml(editor.innerHTML);
-    setFormatMenu((prev) => ({ ...prev, open: false }));
-  }
-
-  useEffect(() => {
-    function closeFormatMenu(event: Event) {
-      const targetNode = event.target as Node | null;
-      const panel = formatMenuRef.current;
-      if (panel && targetNode && panel.contains(targetNode)) return;
-      setFormatMenu((prev) => (prev.open ? { ...prev, open: false } : prev));
-    }
-    window.addEventListener("pointerdown", closeFormatMenu, true);
-    window.addEventListener("scroll", closeFormatMenu, true);
-    window.addEventListener("resize", closeFormatMenu);
-    return () => {
-      window.removeEventListener("pointerdown", closeFormatMenu, true);
-      window.removeEventListener("scroll", closeFormatMenu, true);
-      window.removeEventListener("resize", closeFormatMenu);
-    };
-  }, []);
 
   async function prepareAttachments(): Promise<CreateAttachmentInput[]> {
     const prepared: CreateAttachmentInput[] = [];
@@ -586,37 +323,65 @@ export function ReminderComposer({ onCreate }: Props) {
     return prepared;
   }
 
-  async function handleSubmit(event: FormEvent) {
-    event.preventDefault();
+  async function submitCurrent(showEmptyError: boolean): Promise<boolean> {
+    if (submitLockRef.current) return false;
     setError(null);
     if (!hasContent) {
-      setError("Add a title, body, or attachment first.");
-      return;
+      if (showEmptyError) {
+        setError("Add body text or attachment first.");
+      }
+      return false;
     }
-
+    submitLockRef.current = true;
     setSubmitting(true);
     try {
       const preparedAttachments = await prepareAttachments();
-      const extractedTags = extractTagsFromText([title, bodyText].filter(Boolean).join("\n"));
-      const cleanedTitle = stripTagsFromText(title);
+      const extractedTags = extractTagsFromText(bodyText);
       const cleanedBodyHtml = sanitizeNoteHtml(stripTagsFromHtml(bodyHtml || textToHtml(bodyText)));
 
       await onCreate({
-        note: serializeNote(cleanedTitle, cleanedBodyHtml, extractedTags),
+        note: serializeNote("", cleanedBodyHtml, extractedTags),
         remindAt: remindAt ? new Date(remindAt).toISOString() : null,
         attachments: preparedAttachments
       });
-      setTitle("");
       setBodyHtml("");
-      if (bodyEditorRef.current) bodyEditorRef.current.innerHTML = "";
       setAttachments([]);
       setRemindAt("");
       setScheduleOpen(false);
+      return true;
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to create reminder");
+      return false;
     } finally {
       setSubmitting(false);
+      submitLockRef.current = false;
     }
+  }
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      submitIfDirty: () => submitCurrent(false),
+      focusBody: () => {
+        if (markdownEditorRef.current) {
+          const markdownInput = markdownEditorRef.current.querySelector<HTMLElement>(".mdx-editor__content");
+          if (markdownInput) {
+            markdownInput.focus();
+            return;
+          }
+        }
+      },
+      openSchedule: () => setScheduleOpen(true),
+      openFilePicker: () => {
+        fileInputRef.current?.click();
+      }
+    }),
+    [hasContent, bodyHtml, remindAt, attachments, submitting]
+  );
+
+  async function handleSubmit(event: FormEvent) {
+    event.preventDefault();
+    await submitCurrent(true);
   }
 
   return (
@@ -627,128 +392,20 @@ export function ReminderComposer({ onCreate }: Props) {
         onDrop={onDrop}
         aria-label="Drop links, text, images, or files here"
       >
-        <input
-          className="composer-title-input"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          maxLength={180}
-          placeholder="Title"
-          aria-label="Reminder title"
-        />
-
         <div
-          ref={bodyEditorRef}
-          className="composer-body-input"
-          contentEditable
-          suppressContentEditableWarning
-          role="textbox"
-          aria-label="Reminder body"
-          data-placeholder="Write details..."
-          onInput={(e) => setBodyEditorHtml((e.target as HTMLDivElement).innerHTML)}
-          onMouseDown={onBodyMouseDown}
-          onPaste={onBodyPaste}
-          onKeyDown={onBodyKeyDown}
-          onContextMenu={(event) => {
-            event.preventDefault();
-            openFormatMenuFromSelection(event.clientX, event.clientY, true);
-          }}
-        />
-
-        {formatMenu.open ? (
-          <div
-            ref={formatMenuRef}
-            className="text-format-popover"
-            style={{ left: formatMenu.x, top: formatMenu.y }}
-            role="menu"
-          >
-            <div className="text-format-popover__row">
-              <button
-                type="button"
-                className="text-format-popover__item"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => applyFormatting("bold")}
-              >
-                <strong>B</strong>
-              </button>
-              <button
-                type="button"
-                className="text-format-popover__item"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => applyFormatting("italic")}
-              >
-                <em>I</em>
-              </button>
-              <button
-                type="button"
-                className="text-format-popover__item"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => applyFormatting("underline")}
-              >
-                <u>U</u>
-              </button>
-              <button
-                type="button"
-                className="text-format-popover__item"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => applyFormatting("strikeThrough")}
-              >
-                <s>S</s>
-              </button>
-            </div>
-            <div className="text-format-popover__divider" />
-            <div className="text-format-popover__row text-format-popover__row--lists">
-              <button
-                type="button"
-                className="text-format-popover__list-btn"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => applyList("todo")}
-              >
-                To-do list
-              </button>
-              <button
-                type="button"
-                className="text-format-popover__list-btn"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => applyList("bullet")}
-              >
-                Bulleted list
-              </button>
-              <button
-                type="button"
-                className="text-format-popover__list-btn"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => applyList("numbered")}
-              >
-                Numbered list
-              </button>
-            </div>
-            <div className="text-format-popover__divider" />
-            <div className="text-format-popover__row text-format-popover__row--colors">
-              {TEXT_COLOR_PRESETS.map((color) => (
-                <button
-                  key={color}
-                  type="button"
-                  className="text-format-popover__swatch"
-                  style={{ background: color }}
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => applyTextColor(color)}
-                  aria-label={`Text color ${color}`}
-                />
-              ))}
-              {TEXT_GRADIENT_PRESETS.map((gradient) => (
-                <button
-                  key={gradient}
-                  type="button"
-                  className="text-format-popover__swatch"
-                  style={{ backgroundImage: gradient }}
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => applyGradientText(gradient)}
-                  aria-label="Gradient text"
-                />
-              ))}
-            </div>
-          </div>
-        ) : null}
+          ref={markdownEditorRef}
+          onPaste={(event) => void onBodyPaste(event)}
+          onDrop={(event) => void onDrop(event)}
+          onDragOver={(e) => e.preventDefault()}
+        >
+          <MarkdownBodyEditor
+            valueHtml={bodyHtml}
+            onChange={setBodyEditorHtml}
+            onAttachLinkPreview={(url) => addTextPayload(url)}
+            className="composer-body-input composer-body-input--markdown"
+            placeholder="Write details..."
+          />
+        </div>
 
         {attachments.length > 0 ? (
           <div className="composer-attachments">
@@ -762,7 +419,7 @@ export function ReminderComposer({ onCreate }: Props) {
                       className={
                         attachment.kind === "image"
                           ? `image-attachment-tile ${href ? "is-clickable" : ""}`
-                          : `attachment-chip reminder-attachment ${href ? "is-clickable" : ""}`
+                          : `reminder-attachment ${href ? "is-clickable" : ""}`
                       }
                       onClick={() => {
                         if (href) openAttachment(href);
@@ -938,15 +595,17 @@ export function ReminderComposer({ onCreate }: Props) {
               </span>
             ) : null}
 
-            <motion.button
-              type="submit"
-              className="btn primary composer-save-btn"
-              disabled={submitting}
-              whileHover={submitting ? undefined : { scale: 1.04 }}
-              whileTap={submitting ? undefined : { scale: 0.96 }}
-            >
-              {submitting ? "Saving..." : "Post!"}
-            </motion.button>
+            {hideSubmitButton ? null : (
+              <motion.button
+                type="submit"
+                className="btn primary composer-save-btn"
+                disabled={submitting}
+                whileHover={submitting ? undefined : { scale: 1.04 }}
+                whileTap={submitting ? undefined : { scale: 0.96 }}
+              >
+                {submitting ? "Saving..." : "Post!"}
+              </motion.button>
+            )}
           </div>
         </div>
 
@@ -964,4 +623,4 @@ export function ReminderComposer({ onCreate }: Props) {
       {error ? <p className="form-error">{error}</p> : null}
     </form>
   );
-}
+});

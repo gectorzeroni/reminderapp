@@ -349,6 +349,21 @@ async function getUpcomingRemindersLocal(userId: string): Promise<Reminder[]> {
     .map(deepCloneReminder);
 }
 
+async function getNotesLocal(userId: string): Promise<Reminder[]> {
+  const store = getStore();
+  return Array.from(store.reminders.values())
+    .filter((reminder) => reminder.userId === userId)
+    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+    .map((reminder) => ({ ...deepCloneReminder(reminder), attachments: [] }));
+}
+
+async function deleteNoteLocal(userId: string, noteId: string): Promise<boolean> {
+  const store = getStore();
+  const note = store.reminders.get(noteId);
+  if (!note || note.userId !== userId) return false;
+  return store.reminders.delete(noteId);
+}
+
 async function updateReminderLocal(userId: string, reminderId: string, input: UpdateReminderInput): Promise<Reminder | null> {
   const store = getStore();
   const reminder = store.reminders.get(reminderId);
@@ -532,6 +547,52 @@ async function getUpcomingRemindersSupabase(userId: string): Promise<Reminder[]>
 
   if (error) throw new Error(error.message);
   return maybeAttachSignedPreviewUrls((data ?? []).map(mapReminderRow));
+}
+
+async function getNotesSupabase(userId: string): Promise<Reminder[]> {
+  const supabase = getSupabaseServiceClient();
+  if (!supabase) return getNotesLocal(userId);
+
+  const { data, error } = await supabase
+    .from("reminders")
+    .select("*")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: true })
+    .returns<DbReminderRow[]>();
+
+  if (error) throw new Error(error.message);
+  return (data ?? []).map(mapReminderRow);
+}
+
+async function deleteNoteSupabase(userId: string, noteId: string): Promise<boolean> {
+  const supabase = getSupabaseServiceClient();
+  if (!supabase) return deleteNoteLocal(userId, noteId);
+
+  const { data: attachmentRows } = await supabase
+    .from("reminder_attachments")
+    .select("storage_path, reminders!inner(user_id)")
+    .eq("reminder_id", noteId)
+    .eq("reminders.user_id", userId);
+
+  const { data, error } = await supabase
+    .from("reminders")
+    .delete()
+    .eq("id", noteId)
+    .eq("user_id", userId)
+    .select("id")
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  if (!data) return false;
+
+  const storagePaths = (attachmentRows ?? [])
+    .map((row) => (typeof row.storage_path === "string" ? row.storage_path : null))
+    .filter((path): path is string => Boolean(path));
+  if (storagePaths.length > 0) {
+    await supabase.storage.from(env.supabaseStorageBucket).remove(storagePaths);
+  }
+
+  return true;
 }
 
 async function updateReminderSupabase(userId: string, reminderId: string, input: UpdateReminderInput): Promise<Reminder | null> {
@@ -735,6 +796,14 @@ export async function createReminder(userId: string, input: CreateReminderInput)
 
 export async function getUpcomingReminders(userId: string): Promise<Reminder[]> {
   return shouldUseSupabase(userId) ? getUpcomingRemindersSupabase(userId) : getUpcomingRemindersLocal(userId);
+}
+
+export async function getNotes(userId: string): Promise<Reminder[]> {
+  return shouldUseSupabase(userId) ? getNotesSupabase(userId) : getNotesLocal(userId);
+}
+
+export async function deleteNote(userId: string, noteId: string): Promise<boolean> {
+  return shouldUseSupabase(userId) ? deleteNoteSupabase(userId, noteId) : deleteNoteLocal(userId, noteId);
 }
 
 export async function updateReminder(userId: string, reminderId: string, input: UpdateReminderInput): Promise<Reminder | null> {
