@@ -102,12 +102,35 @@ function sortChronologically(notes: Reminder[]) {
   );
 }
 
+const OPTIMISTIC_NOTE_PREFIX = "optimistic:";
+
+function createOptimisticNote(text: string): Reminder {
+  const timestamp = new Date().toISOString();
+  return {
+    id: `${OPTIMISTIC_NOTE_PREFIX}${crypto.randomUUID()}`,
+    userId: "optimistic",
+    note: text,
+    pinned: false,
+    status: "upcoming",
+    archiveReason: null,
+    remindAt: null,
+    archivedAt: null,
+    completedAt: null,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+    attachments: []
+  };
+}
+
+function isOptimisticNote(note: Reminder) {
+  return note.id.startsWith(OPTIMISTIC_NOTE_PREFIX);
+}
+
 export function NotesApp() {
   const router = useRouter();
   const [notes, setNotes] = useState<Reminder[]>([]);
   const [draft, setDraft] = useState("");
   const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeWeek, setActiveWeek] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<NoteContextMenu | null>(null);
@@ -116,6 +139,7 @@ export function NotesApp() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
   const longPressRef = useRef<LongPressGesture | null>(null);
+  const noteRenderKeysRef = useRef(new Map<string, string>());
   const pendingDeletionRef = useRef<PendingDeletion | null>(null);
   const shouldScrollToLatestRef = useRef(true);
   const scrollBehaviorRef = useRef<ScrollBehavior>("auto");
@@ -228,10 +252,16 @@ export function NotesApp() {
   async function createNote(event?: FormEvent<HTMLFormElement>) {
     event?.preventDefault();
     const text = draft.trim();
-    if (!text || submitting) return;
+    if (!text) return;
 
-    setSubmitting(true);
+    const optimisticNote = createOptimisticNote(text);
+    shouldScrollToLatestRef.current = true;
+    scrollBehaviorRef.current = "auto";
+    setNotes((current) => [...current, optimisticNote]);
+    setDraft("");
     setError(null);
+    textareaRef.current?.focus();
+
     try {
       const response = await fetch("/api/notes", {
         method: "POST",
@@ -241,15 +271,17 @@ export function NotesApp() {
       const body = (await response.json()) as { note?: Reminder; error?: string };
       if (!response.ok || !body.note) throw new Error(body.error || "Could not save note");
 
-      shouldScrollToLatestRef.current = true;
-      scrollBehaviorRef.current = "smooth";
-      setNotes((current) => sortChronologically([...current, body.note as Reminder]));
-      setDraft("");
-      textareaRef.current?.focus();
+      const savedNote = body.note;
+      noteRenderKeysRef.current.set(savedNote.id, optimisticNote.id);
+      setNotes((current) =>
+        sortChronologically(
+          current.map((note) => (note.id === optimisticNote.id ? savedNote : note))
+        )
+      );
     } catch (saveError) {
+      setNotes((current) => current.filter((note) => note.id !== optimisticNote.id));
+      setDraft((current) => current || text);
       setError(saveError instanceof Error ? saveError.message : "Could not save note");
-    } finally {
-      setSubmitting(false);
     }
   }
 
@@ -440,19 +472,20 @@ export function NotesApp() {
                     <AnimatePresence initial={false}>
                       {group.notes.map((note) => {
                         const text = parseStoredNote(note.note).plainText;
+                        const isSaving = isOptimisticNote(note);
                         return (
                           <motion.article
-                            key={note.id}
+                            key={noteRenderKeysRef.current.get(note.id) ?? note.id}
                             layout
-                            initial={{ opacity: 0, y: 10 }}
                             animate={{ opacity: 1, y: 0 }}
                             exit={{ opacity: 0, y: -8, transition: { duration: 0.14, ease: "easeIn" } }}
                             transition={{ type: "spring", duration: 0.3, bounce: 0 }}
                             className={`note-row ${contextMenu?.noteId === note.id ? "has-open-menu" : ""}`}
-                            tabIndex={0}
-                            onContextMenu={(event) => openNoteMenu(event, note.id)}
-                            onKeyDown={(event) => openNoteMenuFromKeyboard(event, note.id)}
-                            onPointerDown={(event) => startLongPress(event, note.id)}
+                            tabIndex={isSaving ? -1 : 0}
+                            aria-label={isSaving ? "Saving note" : undefined}
+                            onContextMenu={isSaving ? undefined : (event) => openNoteMenu(event, note.id)}
+                            onKeyDown={isSaving ? undefined : (event) => openNoteMenuFromKeyboard(event, note.id)}
+                            onPointerDown={isSaving ? undefined : (event) => startLongPress(event, note.id)}
                             onPointerMove={moveLongPress}
                             onPointerUp={(event) => cancelLongPress(event.pointerId)}
                             onPointerCancel={(event) => cancelLongPress(event.pointerId)}
@@ -553,13 +586,12 @@ export function NotesApp() {
             maxLength={5000}
             placeholder="Write a note…"
             aria-label="Write a note"
-            disabled={submitting}
           />
           <button
             type="submit"
             className="notes-send"
-            disabled={!draft.trim() || submitting}
-            aria-label={submitting ? "Saving note" : "Add note"}
+            disabled={!draft.trim()}
+            aria-label="Add note"
           >
             <ArrowUp size={18} strokeWidth={2.2} aria-hidden="true" />
           </button>
