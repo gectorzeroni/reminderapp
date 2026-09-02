@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { RemindersApp } from "@/components/reminders-app";
+import { NotesApp } from "@/components/notes-app";
 import { getLocalDemoUserId } from "@/lib/auth";
 import { hasSupabasePublicEnv } from "@/lib/env";
 import { getSupabaseServerAuthClient } from "@/lib/supabase/server";
@@ -14,5 +14,5 @@ export default async function HomePage() {
     }
   }
 
-  return <RemindersApp />;
+  return <NotesApp />;
 }

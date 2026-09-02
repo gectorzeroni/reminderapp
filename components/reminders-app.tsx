@@ -4,7 +4,7 @@ import * as motion from "motion/react-client";
 import { AnimatePresence } from "motion/react";
 import { useRouter } from "next/navigation";
 import { startTransition, useEffect, useMemo, useRef, useState } from "react";
-import { Archive, Close, Filter, SwapVertical } from "griddy-icons";
+import { Archive, Attachment, Calendar, Close, Filter, SwapVertical } from "griddy-icons";
 import { PacmanLoader } from "react-spinners";
 import { FireworksBackground } from "@/components/animate-ui/components/backgrounds/fireworks";
 import {
@@ -17,7 +17,7 @@ import {
   DropdownMenuTrigger
 } from "@/components/animate-ui/primitives/radix/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/animate-ui/components/radix/popover";
-import { ReminderComposer } from "@/components/reminder-composer";
+import { ReminderComposer, type ReminderComposerHandle } from "@/components/reminder-composer";
 import { ReminderCard } from "@/components/reminder-card";
 import { parseStoredNote } from "@/lib/note";
 import { extractTagsFromText } from "@/lib/parse";
@@ -28,6 +28,7 @@ import type { CreateAttachmentInput, Profile, Reminder, ReminderWithComputed } f
 type ArchiveFilter = "all" | "completed" | "auto";
 type AuthUserIdentity = { id: string; email: string | null; name: string | null } | null;
 type SortMode = "latest" | "upcoming";
+const SIDE_PANEL_TRANSITION_MS = 380;
 const POPULAR_TIMEZONES = [
   "UTC",
   "America/Los_Angeles",
@@ -92,6 +93,7 @@ export function RemindersApp() {
   const [upcoming, setUpcoming] = useState<Reminder[]>([]);
   const [archive, setArchive] = useState<Reminder[]>([]);
   const [archiveOpen, setArchiveOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
   const [archiveFilter, setArchiveFilter] = useState<ArchiveFilter>("all");
   const [archiveQuery, setArchiveQuery] = useState("");
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -103,7 +105,13 @@ export function RemindersApp() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [sortMode, setSortMode] = useState<SortMode>("latest");
+  const [createRemindAt, setCreateRemindAt] = useState<string | null>(null);
+  const [createPanelEntered, setCreatePanelEntered] = useState(false);
+  const [createClosing, setCreateClosing] = useState(false);
   const fireworksTimerRef = useRef<number | null>(null);
+  const createComposerRef = useRef<ReminderComposerHandle | null>(null);
+  const createClosingRef = useRef(false);
+  const createCloseTimerRef = useRef<number | null>(null);
   const wasLoadingRef = useRef(true);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const isMacPlatform =
@@ -158,13 +166,66 @@ export function RemindersApp() {
     void loadArchive();
   }, [archiveOpen]);
 
+  function startCreateCloseAnimation() {
+    if (createCloseTimerRef.current) {
+      window.clearTimeout(createCloseTimerRef.current);
+      createCloseTimerRef.current = null;
+    }
+    setCreatePanelEntered(false);
+    setCreateClosing(true);
+    createCloseTimerRef.current = window.setTimeout(() => {
+      setCreateOpen(false);
+      setCreateClosing(false);
+      createCloseTimerRef.current = null;
+    }, SIDE_PANEL_TRANSITION_MS);
+  }
+
+  async function closeCreateWithAutosave() {
+    if (createClosingRef.current) return;
+    createClosingRef.current = true;
+    startCreateCloseAnimation();
+    try {
+      if (createComposerRef.current) {
+        await createComposerRef.current.submitIfDirty();
+      }
+      setCreateRemindAt(null);
+    } finally {
+      createClosingRef.current = false;
+    }
+  }
+
+  useEffect(() => {
+    if (!createOpen) return;
+    setCreateClosing(false);
+    setCreatePanelEntered(false);
+    let enterRaf2 = 0;
+    const enterRaf = window.requestAnimationFrame(() => {
+      enterRaf2 = window.requestAnimationFrame(() => setCreatePanelEntered(true));
+    });
+    const timer = window.setTimeout(() => {
+      createComposerRef.current?.focusBody();
+    }, 0);
+    return () => {
+      if (createCloseTimerRef.current) {
+        window.clearTimeout(createCloseTimerRef.current);
+        createCloseTimerRef.current = null;
+      }
+      if (enterRaf2) window.cancelAnimationFrame(enterRaf2);
+      window.cancelAnimationFrame(enterRaf);
+      window.clearTimeout(timer);
+    };
+  }, [createOpen]);
+
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") setArchiveOpen(false);
+      if (event.key === "Escape") {
+        setArchiveOpen(false);
+        void closeCreateWithAutosave();
+      }
     }
-    if (archiveOpen) window.addEventListener("keydown", onKeyDown);
+    if (archiveOpen || createOpen) window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [archiveOpen]);
+  }, [archiveOpen, createOpen]);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -426,7 +487,23 @@ export function RemindersApp() {
 
   useEffect(() => {
     function onGlobalKeyDown(event: KeyboardEvent) {
+      const target = event.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.tagName === "SELECT" ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
       const key = event.key.toLowerCase();
+      const isCreateShortcut = (event.metaKey && key === "k") || (event.ctrlKey && key === "k");
+      if (isCreateShortcut) {
+        event.preventDefault();
+        setCreateOpen(true);
+        return;
+      }
       const isSearchShortcut = (event.metaKey && key === "s") || (event.altKey && key === "s");
       if (!isSearchShortcut) return;
       event.preventDefault();
@@ -568,21 +645,20 @@ export function RemindersApp() {
             ) : (
               <>
                 <p>No upcoming reminders yet.</p>
-                <p>Drop a link, file, image, or text into the composer below.</p>
+                <p>Tap New Note below to create your first reminder.</p>
               </>
             )}
           </div>
         ) : (
           <div className="reminder-lists" key={loadAnimationKey}>
             {pinnedUpcoming.length > 0 ? (
-              <section className="reminder-section">
+              <section className="reminder-section reminder-section--pinned">
                 <p className="reminder-section__title">Pinned</p>
-                <motion.ul className="reminder-grid reminder-grid--pinned" layout>
+                <motion.ul className="reminder-grid reminder-grid--pinned">
                   <AnimatePresence>
                     {pinnedUpcoming.map((reminder, index) => (
                       <motion.li
                         key={reminder.id}
-                        layout
                         initial={{ opacity: 0, y: -20 }}
                         animate={{
                           opacity: 1,
@@ -656,6 +732,111 @@ export function RemindersApp() {
           </div>
         )}
       </section>
+
+      <AnimatePresence initial={false} mode="wait">
+        {createOpen ? (
+          <div className="note-editor-overlay create-note-overlay note-editor-overlay--side" role="dialog" aria-modal="true" aria-label="Create reminder">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: createClosing ? 0 : 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: SIDE_PANEL_TRANSITION_MS / 1000, ease: "easeOut" }}
+              className="note-editor-backdrop"
+              onMouseDown={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                void closeCreateWithAutosave();
+              }}
+            />
+            <div
+              className="note-editor-shell create-note-shell note-editor-shell--side"
+              onMouseDown={(event) => event.stopPropagation()}
+            >
+              <div
+                className={`note-editor-panel create-note-panel note-editor-panel--side-enter ${
+                  createClosing ? "is-closing" : createPanelEntered ? "is-open" : ""
+                }`}
+              >
+                <div className="create-note-actions">
+                  <motion.button
+                    className="icon-btn large"
+                    whileHover={{ scale: 1.04 }}
+                    whileTap={{ scale: 0.96 }}
+                    onClick={() => void closeCreateWithAutosave()}
+                    aria-label="Close note modal"
+                  >
+                    <Close size={18} aria-hidden="true" />
+                  </motion.button>
+                  <motion.button
+                    className="icon-btn large"
+                    whileHover={{ scale: 1.04 }}
+                    whileTap={{ scale: 0.96 }}
+                    onClick={() => createComposerRef.current?.openSchedule()}
+                    aria-label="Set reminder date and time"
+                  >
+                    <Calendar size={18} aria-hidden="true" />
+                  </motion.button>
+                  <motion.button
+                    className="icon-btn large"
+                    whileHover={{ scale: 1.04 }}
+                    whileTap={{ scale: 0.96 }}
+                    onClick={() => createComposerRef.current?.openFilePicker()}
+                    aria-label="Add attachment"
+                  >
+                    <Attachment size={18} aria-hidden="true" />
+                  </motion.button>
+                </div>
+                <div className="note-editor__body create-note-modal">
+                  {createRemindAt ? (
+                    <p className="note-editor__meta">
+                      Upcoming ·{" "}
+                      {new Intl.DateTimeFormat(undefined, {
+                        month: "short",
+                        day: "numeric",
+                        hour: "numeric",
+                        minute: "2-digit"
+                      }).format(new Date(createRemindAt))}
+                    </p>
+                  ) : null}
+                  <ReminderComposer
+                    ref={createComposerRef}
+                    hideSubmitButton
+                    onRemindAtChange={setCreateRemindAt}
+                    onCreate={async (payload) => {
+                      await createReminder(payload);
+                      setCreateRemindAt(null);
+                      startCreateCloseAnimation();
+                      if (archiveOpen) void loadArchive();
+                    }}
+                  />
+                </div>
+                <div className="note-editor__footnote">
+                  <span>Please return to</span>
+                  <span>Vlad</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </AnimatePresence>
+
+      <motion.button
+        type="button"
+        className="create-note-fab"
+              whileHover={{ scale: 1.03 }}
+              whileTap={{ scale: 0.97 }}
+              onClick={() => {
+                if (createCloseTimerRef.current) {
+                  window.clearTimeout(createCloseTimerRef.current);
+                  createCloseTimerRef.current = null;
+                }
+                setCreateClosing(false);
+                setCreateRemindAt(null);
+                setCreateOpen(true);
+              }}
+            >
+        New Note
+      </motion.button>
 
       <AnimatePresence initial={false} mode="wait">
         {archiveOpen ? (
@@ -865,15 +1046,6 @@ export function RemindersApp() {
           </Popover>
         </div>
       </div>
-
-      <footer className="composer-wrap">
-        <ReminderComposer
-          onCreate={async (payload) => {
-            await createReminder(payload);
-            if (archiveOpen) void loadArchive();
-          }}
-        />
-      </footer>
 
       <p className="app-watermark" aria-hidden="true">
         <button type="button" className="watermark-btn" onClick={triggerFireworks}>
