@@ -5,14 +5,14 @@
 
 :root {
   --font-inter: "Nunito", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
-  --font-display: "Rubik Burned";
+  --font-display: "Rubik Spray Paint";
   --bg: #ffed8c;
   --bg-accent: none;
   --card: rgba(255, 255, 255, 0.78);
   --card-strong: rgba(255, 255, 255, 0.92);
   --stroke: rgba(7, 16, 69, 0.14);
-  --text: #071045;
-  --muted: rgba(7, 16, 69, 0.62);
+  --text: #1e1d18;
+  --muted: rgba(30, 29, 24, 0.62);
   --danger: #b73333;
   --success: #11773a;
   --accent: #1c1c1c;
@@ -61,7 +61,7 @@ a {
 }
 
 .sign-in-support-link:hover {
-  color: #1c1c1c;
+  color: #1e1d18;
 }
 
 .sign-in-layout {
@@ -174,7 +174,7 @@ a {
 }
 
 .sign-in-input::placeholder {
-  color: rgba(7, 16, 69, 0.42);
+  color: rgba(30, 29, 24, 0.42);
 }
 
 .sign-in-input:focus-visible {
@@ -202,7 +202,7 @@ a {
 .sign-in-demo-btn.btn:hover {
   border-color: rgba(28, 28, 28, 0.18);
   background: #fff4b7;
-  color: #1c1c1c;
+  color: #1e1d18;
 }
 
 .sign-in-forgot-btn {
@@ -211,14 +211,14 @@ a {
   padding: 0;
   text-align: left;
   font-size: 12px;
-  color: rgba(7, 16, 69, 0.72);
+  color: rgba(30, 29, 24, 0.72);
   text-decoration: underline;
   text-underline-offset: 2px;
   cursor: pointer;
 }
 
 .sign-in-forgot-btn:hover {
-  color: #1c1c1c;
+  color: #1e1d18;
 }
 
 .sign-in-message {
@@ -243,7 +243,7 @@ a {
   text-align: left;
   margin: 0;
   font-size: 12px;
-  color: rgba(7, 16, 69, 0.5);
+  color: rgba(30, 29, 24, 0.5);
 }
 
 button,
@@ -339,7 +339,7 @@ select {
 }
 
 .top-bar__search::placeholder {
-  color: rgba(4, 5, 26, 0.42);
+  color: rgba(30, 29, 24, 0.42);
 }
 
 .top-bar__search-shortcut {
@@ -350,7 +350,7 @@ select {
   pointer-events: none;
   font-size: 0.72rem;
   font-weight: 400;
-  color: rgba(32, 31, 26, 0.42);
+  color: rgba(30, 29, 24, 0.42);
 }
 
 .top-bar__search-wrap:focus-within .top-bar__search-shortcut {
@@ -742,7 +742,7 @@ select {
 
 .reminder-card__note {
   margin: 0;
-  color: #2c2a22;
+  color: #1e1d18;
   font-weight: 400;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -817,7 +817,7 @@ select {
   margin: 0.45em 0;
   padding-left: 12px;
   border-left: 2px solid rgba(4, 5, 26, 0.2);
-  color: rgba(4, 5, 26, 0.74);
+  color: rgba(30, 29, 24, 0.74);
 }
 
 .rich-text a {
@@ -923,7 +923,7 @@ select {
   border-radius: 999px;
   border: 1px solid rgba(36, 34, 28, 0.1);
   background: rgba(17, 24, 39, 0.03);
-  color: #6a6660;
+  color: rgba(30, 29, 24, 0.62);
   font-size: 0.76rem;
   line-height: 1;
   padding: 7px 10px;
@@ -971,7 +971,7 @@ select {
 }
 
 .state-pill.archived {
-  color: #555;
+  color: #1e1d18;
 }
 
 .attachment-list,
@@ -1721,7 +1721,7 @@ select {
   bottom: 14px;
   margin: 0;
   font-size: 0.75rem;
-  color: rgba(32, 31, 26, 0.42);
+  color: rgba(30, 29, 24, 0.42);
   pointer-events: auto;
   z-index: 24;
 }
@@ -1850,7 +1850,7 @@ select {
 
 .mdx-toolbar-hint {
   font-size: 11px;
-  color: rgba(4, 5, 26, 0.62);
+  color: rgba(30, 29, 24, 0.62);
   margin-left: 4px;
 }
 
@@ -1872,7 +1872,7 @@ select {
 
 .composer-body-input:empty::before {
   content: attr(data-placeholder);
-  color: rgba(4, 5, 26, 0.42);
+  color: rgba(30, 29, 24, 0.42);
 }
 
 .composer-attachments {
@@ -2187,7 +2187,7 @@ select {
 
 .note-editor__meta {
   margin: 0;
-  color: #071045;
+  color: #1e1d18;
   font-size: 12px;
   font-weight: 600;
   line-height: 1.25;
@@ -2249,7 +2249,7 @@ select {
 
 .note-editor__content:empty::before {
   content: attr(data-placeholder);
-  color: rgba(4, 5, 26, 0.42);
+  color: rgba(30, 29, 24, 0.42);
 }
 
 .note-editor__attachments {
@@ -2697,6 +2697,8 @@ html {
 
 .notes-app {
   --notes-column: 620px;
+  position: relative;
+  isolation: isolate;
   height: 100dvh;
   min-height: 520px;
   overflow: hidden;
@@ -2705,10 +2707,26 @@ html {
   background: #ffed8c;
 }
 
+.notes-app::before {
+  content: "";
+  position: fixed;
+  z-index: 6;
+  top: 0;
+  bottom: 0;
+  left: 120px;
+  width: 14px;
+  pointer-events: none;
+  background: linear-gradient(
+    to right,
+    #edaa7f 0 1px,
+    transparent 1px 13px,
+    #edaa7f 13px 14px
+  );
+}
+
 .notes-header {
   z-index: 4;
   background: rgba(255, 237, 140, 0.86);
-  border-bottom: 1px solid rgba(7, 16, 69, 0.09);
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
 }
@@ -2731,9 +2749,9 @@ html {
 .notes-brand__wordmark {
   font-family: var(--font-display), var(--font-inter), sans-serif;
   font-size: 28px;
-  font-weight: 500;
+  font-weight: 400;
   line-height: 1;
-  color: #071045;
+  color: #1e1d18;
 }
 
 .notes-logout {
@@ -2746,7 +2764,7 @@ html {
   border: 0;
   border-radius: 12px;
   background: transparent;
-  color: rgba(28, 28, 28, 0.64);
+  color: rgba(30, 29, 24, 0.64);
   cursor: pointer;
   font-size: 12px;
   font-weight: 700;
@@ -2756,7 +2774,7 @@ html {
 }
 
 .notes-logout:hover {
-  color: #1c1c1c;
+  color: #1e1d18;
   background: rgba(28, 28, 28, 0.06);
 }
 
@@ -2806,7 +2824,7 @@ html {
   align-items: center;
   justify-content: center;
   gap: 10px;
-  color: rgba(7, 16, 69, 0.5);
+  color: rgba(30, 29, 24, 0.5);
   font-size: 13px;
 }
 
@@ -2826,7 +2844,7 @@ html {
 
 .notes-state--empty p {
   margin: 0;
-  color: rgba(7, 16, 69, 0.76);
+  color: rgba(30, 29, 24, 0.76);
   font-size: 15px;
   font-weight: 700;
 }
@@ -2854,7 +2872,7 @@ html {
 
 .notes-week__heading h2 {
   margin: 0;
-  color: rgba(7, 16, 69, 0.44);
+  color: rgba(30, 29, 24, 0.44);
   font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.075em;
@@ -2869,9 +2887,9 @@ html {
 
 .note-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  align-items: start;
-  gap: 28px;
+  grid-template-columns: minmax(0, 1fr) 40px;
+  align-items: center;
+  gap: 16px;
   padding: 23px 2px 24px;
   border-bottom: 1px solid rgba(7, 16, 69, 0.1);
   outline: none;
@@ -2884,27 +2902,86 @@ html {
 .note-row:hover,
 .note-row.has-open-menu,
 .note-row:focus-visible {
-  background: rgba(255, 255, 255, 0.48);
-  box-shadow: 12px 0 0 rgba(255, 255, 255, 0.48), -12px 0 0 rgba(255, 255, 255, 0.48);
+  background: #fff7b4;
+  box-shadow: 12px 0 0 #fff7b4, -12px 0 0 #fff7b4;
 }
 
 .note-row:focus-visible {
   box-shadow:
-    12px 0 0 rgba(255, 255, 255, 0.48),
-    -12px 0 0 rgba(255, 255, 255, 0.48),
+    12px 0 0 #fff7b4,
+    -12px 0 0 #fff7b4,
     inset 3px 0 0 rgba(28, 28, 28, 0.68);
 }
 
 .note-row p {
   min-width: 0;
   margin: 0;
-  color: #071045;
+  color: #1e1d18;
   font-size: 18px;
   font-weight: 500;
   line-height: 1.58;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
   text-wrap: pretty;
+}
+
+.note-check {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #1e1d18;
+  cursor: pointer;
+  transition-property: scale;
+  transition-duration: 150ms;
+  transition-timing-function: ease-out;
+}
+
+.note-check__circle {
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border: 1.5px solid rgba(30, 29, 24, 0.46);
+  border-radius: 999px;
+  background: transparent;
+  transition-property: border-color, background-color;
+  transition-duration: 150ms;
+  transition-timing-function: ease-out;
+}
+
+.note-check__icon {
+  display: grid;
+  place-items: center;
+}
+
+.note-check:hover .note-check__circle {
+  border-color: #1e1d18;
+  background: #fff7b4;
+}
+
+.note-check.is-checked .note-check__circle {
+  border-color: #1e1d18;
+  background: #1e1d18;
+  color: #fff7b4;
+}
+
+.note-check:focus-visible {
+  outline: 2px solid rgba(30, 29, 24, 0.72);
+  outline-offset: 1px;
+}
+
+.note-check:active:not(:disabled) {
+  scale: 0.96;
+}
+
+.note-check:disabled {
+  cursor: default;
+  opacity: 0.32;
 }
 
 .notes-week:last-child .note-row:last-child {
@@ -3026,15 +3103,15 @@ html {
 
 .notes-composer {
   width: min(var(--notes-column), 100%);
-  min-height: 58px;
+  min-height: 78px;
   margin: 0 auto;
-  padding: 8px 8px 8px 19px;
+  padding: 7px 8px 7px 19px;
   display: flex;
   align-items: flex-end;
   gap: 10px;
   border: 1px solid rgba(7, 16, 69, 0.14);
-  border-radius: 16px;
-  background: #fff4b7;
+  border-radius: 12px;
+  background: #fff3b1;
   box-shadow: none;
   transition-property: border-color, background-color;
   transition-duration: 170ms;
@@ -3042,18 +3119,18 @@ html {
 }
 
 .notes-composer:focus-within {
-  background: #fff4b7;
+  background: #fff3b1;
   border-color: rgba(28, 28, 28, 0.42);
   box-shadow: none;
 }
 
 .notes-composer textarea {
   width: 100%;
-  min-height: 42px;
+  min-height: 62px;
   max-height: 144px;
   resize: none;
   overflow-y: auto;
-  padding: 8px 0;
+  padding: 18px 0;
   border: 0;
   outline: 0;
   background: transparent;
@@ -3064,33 +3141,28 @@ html {
 }
 
 .notes-composer textarea::placeholder {
-  color: rgba(7, 16, 69, 0.34);
+  color: rgba(30, 29, 24, 0.34);
 }
 
 .notes-send {
-  width: 42px;
-  height: 42px;
-  flex: 0 0 42px;
+  width: 78px;
+  height: 62px;
+  flex: 0 0 78px;
   display: grid;
   place-items: center;
   border: 0;
-  border-radius: 8px;
+  border-radius: 1000px;
   background: var(--accent);
-  box-shadow:
-    0 0 0 1px rgba(0, 0, 0, 0.16),
-    0 4px 12px rgba(28, 28, 28, 0.22);
+  box-shadow: none;
   color: #fff4b7;
   cursor: pointer;
-  transition-property: opacity, scale, background-color, box-shadow;
+  transition-property: opacity, scale, background-color;
   transition-duration: 150ms;
   transition-timing-function: ease-out;
 }
 
 .notes-send:hover:not(:disabled) {
   background: #111111;
-  box-shadow:
-    0 0 0 1px rgba(0, 0, 0, 0.2),
-    0 6px 16px rgba(28, 28, 28, 0.28);
 }
 
 .notes-send:active:not(:disabled) {
@@ -3110,7 +3182,7 @@ html {
   justify-content: space-between;
   gap: 18px;
   padding: 0 3px;
-  color: rgba(7, 16, 69, 0.32);
+  color: rgba(30, 29, 24, 0.32);
   font-size: 10px;
   line-height: 1.3;
 }
@@ -3172,12 +3244,8 @@ html {
 }
 
 .note-delete-toast {
-  position: fixed;
-  z-index: 32;
-  left: 50%;
-  bottom: 108px;
-  translate: -50% 0;
-  min-width: 244px;
+  position: relative;
+  width: 100%;
   min-height: 52px;
   padding: 6px 6px 6px 16px;
   display: flex;
@@ -3197,7 +3265,7 @@ html {
   -webkit-backdrop-filter: blur(18px);
 }
 
-.note-delete-toast button {
+.note-delete-toast__action {
   min-width: 64px;
   min-height: 40px;
   padding: 0 13px;
@@ -3213,26 +3281,15 @@ html {
   transition-timing-function: ease-out;
 }
 
-.note-delete-toast button:hover,
-.note-delete-toast button:focus-visible {
+.note-delete-toast__action:hover,
+.note-delete-toast__action:focus-visible {
   outline: none;
   background: rgba(255, 255, 255, 0.18);
   color: white;
 }
 
-.note-delete-toast button:active {
+.note-delete-toast__action:active {
   scale: 0.96;
-}
-
-.note-delete-toast__timer {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  height: 2px;
-  background: #ffed8c;
-  transform-origin: left center;
-  animation: note-delete-countdown 4s linear forwards;
 }
 
 @keyframes notes-pulse {
@@ -3243,15 +3300,6 @@ html {
   to {
     opacity: 1;
     transform: scale(1);
-  }
-}
-
-@keyframes note-delete-countdown {
-  from {
-    transform: scaleX(1);
-  }
-  to {
-    transform: scaleX(0);
   }
 }
 
@@ -3271,6 +3319,10 @@ html {
   .notes-app {
     grid-template-rows: 60px minmax(0, 1fr) auto;
     min-height: 440px;
+  }
+
+  .notes-app::before {
+    display: none;
   }
 
   .notes-header__inner,
@@ -3297,8 +3349,8 @@ html {
   }
 
   .note-row {
-    grid-template-columns: 1fr;
-    gap: 8px;
+    grid-template-columns: minmax(0, 1fr) 40px;
+    gap: 12px;
     padding-block: 20px;
     touch-action: pan-y;
     -webkit-touch-callout: none;
@@ -3312,11 +3364,6 @@ html {
 
   .notes-composer-area {
     padding-inline: 12px;
-  }
-
-  .note-delete-toast {
-    bottom: 104px;
-    min-width: min(244px, calc(100vw - 32px));
   }
 
   .notes-composer__meta > span:last-child {
@@ -3333,17 +3380,15 @@ html {
     animation: none;
   }
 
-  .note-delete-toast__timer {
-    animation: none;
-  }
-
   .timeline-tick__mark,
   .timeline-tick__label,
   .notes-logout,
   .notes-send,
   .notes-composer,
   .note-context-menu button,
-  .note-delete-toast button,
+  .note-check,
+  .note-check__circle,
+  .note-delete-toast__action,
   .notes-composer__meta > span:first-child {
     transition: none;
   }

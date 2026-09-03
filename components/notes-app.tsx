@@ -1,9 +1,11 @@
 "use client";
 
+import { play } from "cuelume";
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowUp, LogOut, Trash2 } from "lucide-react";
+import { ArrowUp, Check, LogOut, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import {
+  type CSSProperties,
   type FormEvent,
   type KeyboardEvent,
   type MouseEvent as ReactMouseEvent,
@@ -13,6 +15,7 @@ import {
   useRef,
   useState
 } from "react";
+import { Toaster, toast } from "sonner";
 import { parseStoredNote } from "@/lib/note";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import type { Reminder } from "@/lib/types";
@@ -103,6 +106,11 @@ function sortChronologically(notes: Reminder[]) {
 }
 
 const OPTIMISTIC_NOTE_PREFIX = "optimistic:";
+const DELETE_TOAST_DURATION = 4000;
+
+function deleteToastId(noteId: string) {
+  return `note-deleted:${noteId}`;
+}
 
 function createOptimisticNote(text: string): Reminder {
   const timestamp = new Date().toISOString();
@@ -134,7 +142,7 @@ export function NotesApp() {
   const [error, setError] = useState<string | null>(null);
   const [activeWeek, setActiveWeek] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<NoteContextMenu | null>(null);
-  const [pendingDeletion, setPendingDeletion] = useState<PendingDeletion | null>(null);
+  const [checkedNoteIds, setCheckedNoteIds] = useState<Set<string>>(() => new Set());
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
@@ -299,6 +307,17 @@ export function NotesApp() {
     });
   }
 
+  function toggleNoteChecked(noteId: string) {
+    if (!checkedNoteIds.has(noteId)) play("success");
+
+    setCheckedNoteIds((current) => {
+      const next = new Set(current);
+      if (next.has(noteId)) next.delete(noteId);
+      else next.add(noteId);
+      return next;
+    });
+  }
+
   function showNoteMenu(noteId: string, x: number, y: number) {
     const menuWidth = 176;
     const menuHeight = 60;
@@ -375,6 +394,7 @@ export function NotesApp() {
     if (previous) {
       window.clearTimeout(previous.timerId);
       pendingDeletionRef.current = null;
+      toast.dismiss(deleteToastId(previous.note.id));
       void persistDeletion(previous);
     }
 
@@ -387,23 +407,32 @@ export function NotesApp() {
     pending.timerId = window.setTimeout(() => {
       if (pendingDeletionRef.current?.note.id !== note.id) return;
       pendingDeletionRef.current = null;
-      setPendingDeletion(null);
+      toast.dismiss(deleteToastId(note.id));
       void persistDeletion(pending);
-    }, 4000);
+    }, DELETE_TOAST_DURATION);
 
     pendingDeletionRef.current = pending;
-    setPendingDeletion(pending);
     setNotes((current) => current.filter((item) => item.id !== note.id));
     setContextMenu(null);
     setError(null);
+
+    toast("Note deleted", {
+      id: deleteToastId(note.id),
+      duration: DELETE_TOAST_DURATION,
+      dismissible: false,
+      action: {
+        label: "Undo",
+        onClick: () => undoDelete(note.id)
+      }
+    });
   }
 
-  function undoDelete() {
+  function undoDelete(noteId: string) {
     const pending = pendingDeletionRef.current;
-    if (!pending) return;
+    if (!pending || pending.note.id !== noteId) return;
     window.clearTimeout(pending.timerId);
     pendingDeletionRef.current = null;
-    setPendingDeletion(null);
+    toast.dismiss(deleteToastId(noteId));
     setNotes((current) => {
       if (current.some((note) => note.id === pending.note.id)) return current;
       const next = [...current];
@@ -473,6 +502,7 @@ export function NotesApp() {
                       {group.notes.map((note) => {
                         const text = parseStoredNote(note.note).plainText;
                         const isSaving = isOptimisticNote(note);
+                        const isChecked = checkedNoteIds.has(note.id);
                         return (
                           <motion.article
                             key={noteRenderKeysRef.current.get(note.id) ?? note.id}
@@ -492,6 +522,36 @@ export function NotesApp() {
                             onPointerLeave={(event) => cancelLongPress(event.pointerId)}
                           >
                             <p>{text}</p>
+                            <button
+                              type="button"
+                              className={`note-check ${isChecked ? "is-checked" : ""}`}
+                              aria-label={isChecked ? "Uncheck note" : "Check note"}
+                              aria-pressed={isChecked}
+                              disabled={isSaving}
+                              onClick={() => toggleNoteChecked(note.id)}
+                              onContextMenu={(event) => event.stopPropagation()}
+                              onPointerDown={(event) => {
+                                event.stopPropagation();
+                                cancelLongPress();
+                              }}
+                            >
+                              <span className="note-check__circle" aria-hidden="true">
+                                <AnimatePresence initial={false}>
+                                  {isChecked ? (
+                                    <motion.span
+                                      key="check"
+                                      className="note-check__icon"
+                                      initial={{ opacity: 0, scale: 0.25, filter: "blur(4px)" }}
+                                      animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
+                                      exit={{ opacity: 0, scale: 0.25, filter: "blur(4px)" }}
+                                      transition={{ type: "spring", duration: 0.3, bounce: 0 }}
+                                    >
+                                      <Check size={16} strokeWidth={2.4} />
+                                    </motion.span>
+                                  ) : null}
+                                </AnimatePresence>
+                              </span>
+                            </button>
                             <span className="sr-only">Right-click or press and hold for note actions.</span>
                           </motion.article>
                         );
@@ -557,23 +617,21 @@ export function NotesApp() {
         ) : null}
       </AnimatePresence>
 
-      <AnimatePresence initial={false}>
-        {pendingDeletion ? (
-          <motion.div
-            key={pendingDeletion.note.id}
-            className="note-delete-toast"
-            role="status"
-            initial={{ opacity: 0, y: 12, scale: 0.96 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 8, scale: 0.98 }}
-            transition={{ type: "spring", duration: 0.3, bounce: 0 }}
-          >
-            <span>Note deleted</span>
-            <button type="button" onClick={undoDelete}>Undo</button>
-            <span className="note-delete-toast__timer" aria-hidden="true" />
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
+      <Toaster
+        position="bottom-center"
+        offset={{ bottom: 108 }}
+        mobileOffset={{ right: 16, bottom: 104, left: 16 }}
+        visibleToasts={1}
+        toastOptions={{
+          duration: DELETE_TOAST_DURATION,
+          unstyled: true,
+          classNames: {
+            toast: "note-delete-toast",
+            actionButton: "note-delete-toast__action"
+          }
+        }}
+        style={{ "--width": "244px" } as CSSProperties}
+      />
 
       <footer className="notes-composer-area">
         <form className="notes-composer" onSubmit={createNote}>
