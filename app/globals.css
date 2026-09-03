@@ -2714,13 +2714,13 @@ html {
   top: 0;
   bottom: 0;
   left: 120px;
-  width: 14px;
+  width: 15px;
   pointer-events: none;
   background: linear-gradient(
     to right,
-    #edaa7f 0 1px,
-    transparent 1px 13px,
-    #edaa7f 13px 14px
+    #edaa7f 0 1.5px,
+    transparent 1.5px 13.5px,
+    #edaa7f 13.5px 15px
   );
 }
 
@@ -2901,6 +2901,7 @@ html {
 
 .note-row:hover,
 .note-row.has-open-menu,
+.note-row.is-editing,
 .note-row:focus-visible {
   background: #fff7b4;
   box-shadow: 12px 0 0 #fff7b4, -12px 0 0 #fff7b4;
@@ -2913,16 +2914,48 @@ html {
     inset 3px 0 0 rgba(28, 28, 28, 0.68);
 }
 
-.note-row p {
+.note-row__text,
+.note-row__editor {
   min-width: 0;
+  width: 100%;
   margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
   color: #1e1d18;
+  font-family: inherit;
   font-size: 18px;
   font-weight: 500;
   line-height: 1.58;
+  text-align: left;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
   text-wrap: pretty;
+}
+
+.note-row__text {
+  appearance: none;
+  cursor: text;
+}
+
+.note-row__text:disabled {
+  color: #1e1d18;
+  cursor: default;
+  opacity: 1;
+}
+
+.note-row__text:focus-visible {
+  border-radius: 2px;
+  outline: 2px solid rgba(30, 29, 24, 0.56);
+  outline-offset: 4px;
+}
+
+.note-row__editor {
+  min-height: 28px;
+  resize: none;
+  overflow: hidden;
+  outline: 0;
+  caret-color: #1e1d18;
 }
 
 .note-check {

@@ -36,6 +36,7 @@ export interface Reminder {
   userId: string;
   note: string | null;
   pinned: boolean;
+  checked: boolean;
   status: ReminderStatus;
   archiveReason: ArchiveReason;
   remindAt: string | null;
@@ -75,6 +76,7 @@ export interface UpdateReminderInput {
   remindAt?: string | null;
   note?: string | null;
   pinned?: boolean;
+  checked?: boolean;
   removeAttachmentIds?: string[];
   attachments?: CreateAttachmentInput[];
 }

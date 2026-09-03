@@ -25,6 +25,15 @@ export const createNoteSchema = z.object({
   text: z.string().trim().min(1, "Note cannot be empty").max(5000)
 });
 
+export const updateNoteSchema = z
+  .object({
+    note: z.string().trim().min(1, "Note cannot be empty").max(5000).optional(),
+    checked: z.boolean().optional()
+  })
+  .refine((value) => value.note !== undefined || value.checked !== undefined, {
+    message: "A note change is required"
+  });
+
 export const createReminderSchema = z
   .object({
     note: z.string().trim().max(5000).optional().nullable(),
@@ -84,6 +93,7 @@ export const updateReminderSchema = z.object({
   remindAt: z.string().datetime().nullable().optional(),
   note: z.string().trim().max(20000).nullable().optional(),
   pinned: z.boolean().optional(),
+  checked: z.boolean().optional(),
   removeAttachmentIds: z.array(z.string().uuid()).max(MAX_ATTACHMENTS).optional(),
   attachments: z.array(reminderAttachmentSchema).max(MAX_ATTACHMENTS).optional()
 }).superRefine((value, ctx) => {
