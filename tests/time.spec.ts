@@ -8,6 +8,7 @@ function makeReminder(remindAt: string): Reminder {
     userId: "u1",
     note: "Test",
     pinned: false,
+    checked: false,
     status: "upcoming",
     archiveReason: null,
     remindAt,

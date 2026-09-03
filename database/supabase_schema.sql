@@ -37,6 +37,7 @@ create table if not exists public.reminders (
   user_id uuid not null references public.profiles(id) on delete cascade,
   note text,
   pinned boolean not null default false,
+  checked boolean not null default false,
   status reminder_status not null default 'upcoming',
   archive_reason archive_reason,
   remind_at timestamptz,
@@ -48,6 +49,9 @@ create table if not exists public.reminders (
 
 alter table public.reminders
   add column if not exists pinned boolean not null default false;
+
+alter table public.reminders
+  add column if not exists checked boolean not null default false;
 
 create table if not exists public.reminder_attachments (
   id uuid primary key default gen_random_uuid(),
@@ -90,6 +94,23 @@ drop trigger if exists reminders_set_updated_at on public.reminders;
 create trigger reminders_set_updated_at
 before update on public.reminders
 for each row execute function public.set_updated_at();
+
+do $$
+begin
+  if exists (
+    select 1
+    from pg_publication
+    where pubname = 'supabase_realtime'
+  ) and not exists (
+    select 1
+    from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'reminders'
+  ) then
+    alter publication supabase_realtime add table public.reminders;
+  end if;
+end $$;
 
 alter table public.profiles enable row level security;
 alter table public.reminders enable row level security;

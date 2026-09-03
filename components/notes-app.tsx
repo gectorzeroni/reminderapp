@@ -119,6 +119,7 @@ function createOptimisticNote(text: string): Reminder {
     userId: "optimistic",
     note: text,
     pinned: false,
+    checked: false,
     status: "upcoming",
     archiveReason: null,
     remindAt: null,
@@ -134,6 +135,11 @@ function isOptimisticNote(note: Reminder) {
   return note.id.startsWith(OPTIMISTIC_NOTE_PREFIX);
 }
 
+function resizeNoteEditor(element: HTMLTextAreaElement) {
+  element.style.height = "0px";
+  element.style.height = `${element.scrollHeight}px`;
+}
+
 export function NotesApp() {
   const router = useRouter();
   const [notes, setNotes] = useState<Reminder[]>([]);
@@ -142,7 +148,10 @@ export function NotesApp() {
   const [error, setError] = useState<string | null>(null);
   const [activeWeek, setActiveWeek] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<NoteContextMenu | null>(null);
-  const [checkedNoteIds, setCheckedNoteIds] = useState<Set<string>>(() => new Set());
+  const [checkingNoteIds, setCheckingNoteIds] = useState<Set<string>>(() => new Set());
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+  const [editingNoteText, setEditingNoteText] = useState("");
+  const [savingNoteIds, setSavingNoteIds] = useState<Set<string>>(() => new Set());
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
@@ -195,6 +204,51 @@ export function NotesApp() {
     void loadNotes();
     return () => {
       cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    const supabase = getSupabaseBrowserClient();
+    if (!supabase) return;
+
+    const channel = supabase
+      .channel("notes-sync")
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "reminders" },
+        (payload) => {
+          const changedNote = payload.new as {
+            id?: unknown;
+            checked?: unknown;
+            note?: unknown;
+            updated_at?: unknown;
+          };
+          if (typeof changedNote.id !== "string") {
+            return;
+          }
+
+          setNotes((current) =>
+            current.map((note) => {
+              if (note.id !== changedNote.id) return note;
+              const nextNote = { ...note };
+              if (typeof changedNote.checked === "boolean") {
+                nextNote.checked = changedNote.checked;
+              }
+              if (typeof changedNote.note === "string" || changedNote.note === null) {
+                nextNote.note = changedNote.note;
+              }
+              if (typeof changedNote.updated_at === "string") {
+                nextNote.updatedAt = changedNote.updated_at;
+              }
+              return nextNote;
+            })
+          );
+        }
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
     };
   }, []);
 
@@ -299,6 +353,67 @@ export function NotesApp() {
     void createNote();
   }
 
+  function beginEditingNote(note: Reminder) {
+    if (isOptimisticNote(note) || savingNoteIds.has(note.id)) return;
+    cancelLongPress();
+    setContextMenu(null);
+    setError(null);
+    setEditingNoteId(note.id);
+    setEditingNoteText(parseStoredNote(note.note).plainText);
+  }
+
+  async function finishEditingNote(note: Reminder, nextValue: string) {
+    if (editingNoteId !== note.id) return;
+
+    const nextText = nextValue.trim();
+    const previousText = note.note;
+    const previousPlainText = parseStoredNote(previousText).plainText.trim();
+    setEditingNoteId(null);
+    setEditingNoteText("");
+
+    if (!nextText) {
+      setError("Note cannot be empty");
+      return;
+    }
+    if (nextText === previousPlainText) return;
+
+    setError(null);
+    setSavingNoteIds((current) => new Set(current).add(note.id));
+    setNotes((current) =>
+      current.map((item) => (item.id === note.id ? { ...item, note: nextText } : item))
+    );
+
+    try {
+      const response = await fetch(`/api/notes/${note.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ note: nextText })
+      });
+      const body = (await response.json()) as { note?: Reminder; error?: string };
+      if (!response.ok || !body.note) {
+        throw new Error(body.error || "Could not update note");
+      }
+
+      const savedNote = body.note;
+      setNotes((current) =>
+        current.map((item) => (item.id === note.id ? savedNote : item))
+      );
+    } catch (updateError) {
+      setNotes((current) =>
+        current.map((item) =>
+          item.id === note.id ? { ...item, note: previousText } : item
+        )
+      );
+      setError(updateError instanceof Error ? updateError.message : "Could not update note");
+    } finally {
+      setSavingNoteIds((current) => {
+        const next = new Set(current);
+        next.delete(note.id);
+        return next;
+      });
+    }
+  }
+
   function jumpToWeek(key: string) {
     setActiveWeek(key);
     document.getElementById(`week-${key}`)?.scrollIntoView({
@@ -307,15 +422,46 @@ export function NotesApp() {
     });
   }
 
-  function toggleNoteChecked(noteId: string) {
-    if (!checkedNoteIds.has(noteId)) play("success");
+  async function toggleNoteChecked(note: Reminder) {
+    const previousChecked = note.checked;
+    const nextChecked = !previousChecked;
+    if (nextChecked) play("success");
 
-    setCheckedNoteIds((current) => {
-      const next = new Set(current);
-      if (next.has(noteId)) next.delete(noteId);
-      else next.add(noteId);
-      return next;
-    });
+    setError(null);
+    setCheckingNoteIds((current) => new Set(current).add(note.id));
+    setNotes((current) =>
+      current.map((item) => (item.id === note.id ? { ...item, checked: nextChecked } : item))
+    );
+
+    try {
+      const response = await fetch(`/api/notes/${note.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ checked: nextChecked })
+      });
+      const body = (await response.json()) as { note?: Reminder; error?: string };
+      if (!response.ok || !body.note) {
+        throw new Error(body.error || "Could not update note");
+      }
+
+      const savedNote = body.note;
+      setNotes((current) =>
+        current.map((item) => (item.id === note.id ? savedNote : item))
+      );
+    } catch (updateError) {
+      setNotes((current) =>
+        current.map((item) =>
+          item.id === note.id ? { ...item, checked: previousChecked } : item
+        )
+      );
+      setError(updateError instanceof Error ? updateError.message : "Could not update note");
+    } finally {
+      setCheckingNoteIds((current) => {
+        const next = new Set(current);
+        next.delete(note.id);
+        return next;
+      });
+    }
   }
 
   function showNoteMenu(noteId: string, x: number, y: number) {
@@ -475,92 +621,147 @@ export function NotesApp() {
           }}
         >
           <div className="notes-list">
-            {loading ? (
-              <div className="notes-state" role="status">
-                <span className="notes-state__pulse" aria-hidden="true" />
-                Loading notes
-              </div>
-            ) : notes.length === 0 ? (
-              <div className="notes-state notes-state--empty">
-                <p>Your timeline is empty.</p>
-                <span>Write your first note below.</span>
-              </div>
-            ) : (
-              weekGroups.map((group) => (
-                <section
-                  key={group.key}
-                  id={`week-${group.key}`}
-                  data-week-key={group.key}
-                  className="notes-week"
-                  aria-labelledby={`week-label-${group.key}`}
-                >
-                  <div className="notes-week__heading">
-                    <h2 id={`week-label-${group.key}`}>{group.label}</h2>
-                  </div>
-                  <div className="notes-week__items">
-                    <AnimatePresence initial={false}>
-                      {group.notes.map((note) => {
-                        const text = parseStoredNote(note.note).plainText;
-                        const isSaving = isOptimisticNote(note);
-                        const isChecked = checkedNoteIds.has(note.id);
-                        return (
-                          <motion.article
-                            key={noteRenderKeysRef.current.get(note.id) ?? note.id}
-                            layout
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: -8, transition: { duration: 0.14, ease: "easeIn" } }}
-                            transition={{ type: "spring", duration: 0.3, bounce: 0 }}
-                            className={`note-row ${contextMenu?.noteId === note.id ? "has-open-menu" : ""}`}
-                            tabIndex={isSaving ? -1 : 0}
-                            aria-label={isSaving ? "Saving note" : undefined}
-                            onContextMenu={isSaving ? undefined : (event) => openNoteMenu(event, note.id)}
-                            onKeyDown={isSaving ? undefined : (event) => openNoteMenuFromKeyboard(event, note.id)}
-                            onPointerDown={isSaving ? undefined : (event) => startLongPress(event, note.id)}
-                            onPointerMove={moveLongPress}
-                            onPointerUp={(event) => cancelLongPress(event.pointerId)}
-                            onPointerCancel={(event) => cancelLongPress(event.pointerId)}
-                            onPointerLeave={(event) => cancelLongPress(event.pointerId)}
-                          >
-                            <p>{text}</p>
-                            <button
-                              type="button"
-                              className={`note-check ${isChecked ? "is-checked" : ""}`}
-                              aria-label={isChecked ? "Uncheck note" : "Check note"}
-                              aria-pressed={isChecked}
-                              disabled={isSaving}
-                              onClick={() => toggleNoteChecked(note.id)}
-                              onContextMenu={(event) => event.stopPropagation()}
-                              onPointerDown={(event) => {
-                                event.stopPropagation();
-                                cancelLongPress();
-                              }}
+            <AnimatePresence initial={false} mode="popLayout">
+              {loading ? (
+                <motion.div key="loading" layout="position" className="notes-state" role="status">
+                  <span className="notes-state__pulse" aria-hidden="true" />
+                  Loading notes
+                </motion.div>
+              ) : notes.length === 0 ? (
+                <motion.div key="empty" layout="position" className="notes-state notes-state--empty">
+                  <p>Your timeline is empty.</p>
+                  <span>Write your first note below.</span>
+                </motion.div>
+              ) : (
+                weekGroups.map((group) => (
+                  <motion.section
+                    key={group.key}
+                    id={`week-${group.key}`}
+                    data-week-key={group.key}
+                    layout="position"
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -8, transition: { duration: 0.14, ease: "easeIn" } }}
+                    transition={{ type: "spring", duration: 0.3, bounce: 0 }}
+                    className="notes-week"
+                    aria-labelledby={`week-label-${group.key}`}
+                  >
+                    <motion.div
+                      layout="position"
+                      className="notes-week__heading"
+                      transition={{ type: "spring", duration: 0.3, bounce: 0 }}
+                    >
+                      <h2 id={`week-label-${group.key}`}>{group.label}</h2>
+                    </motion.div>
+                    <motion.div
+                      layout="position"
+                      className="notes-week__items"
+                      transition={{ type: "spring", duration: 0.3, bounce: 0 }}
+                    >
+                      <AnimatePresence initial={false} mode="popLayout">
+                        {group.notes.map((note) => {
+                          const text = parseStoredNote(note.note).plainText;
+                          const isSaving = isOptimisticNote(note);
+                          const isEditing = editingNoteId === note.id;
+                          const isSavingEdit = savingNoteIds.has(note.id);
+                          const isChecked = note.checked;
+                          const isChecking = checkingNoteIds.has(note.id);
+                          return (
+                            <motion.article
+                              key={noteRenderKeysRef.current.get(note.id) ?? note.id}
+                              layout
+                              animate={{ opacity: 1, y: 0 }}
+                              exit={{ opacity: 0, y: -8, transition: { duration: 0.14, ease: "easeIn" } }}
+                              transition={{ type: "spring", duration: 0.3, bounce: 0 }}
+                              className={`note-row ${isEditing ? "is-editing" : ""} ${contextMenu?.noteId === note.id ? "has-open-menu" : ""}`}
+                              tabIndex={isSaving || isEditing ? -1 : 0}
+                              aria-label={isSaving || isSavingEdit ? "Saving note" : undefined}
+                              aria-busy={isSaving || isSavingEdit}
+                              onContextMenu={isSaving || isEditing ? undefined : (event) => openNoteMenu(event, note.id)}
+                              onKeyDown={isSaving || isEditing ? undefined : (event) => openNoteMenuFromKeyboard(event, note.id)}
+                              onPointerDown={isSaving || isEditing ? undefined : (event) => startLongPress(event, note.id)}
+                              onPointerMove={moveLongPress}
+                              onPointerUp={(event) => cancelLongPress(event.pointerId)}
+                              onPointerCancel={(event) => cancelLongPress(event.pointerId)}
+                              onPointerLeave={(event) => cancelLongPress(event.pointerId)}
                             >
-                              <span className="note-check__circle" aria-hidden="true">
-                                <AnimatePresence initial={false}>
-                                  {isChecked ? (
-                                    <motion.span
-                                      key="check"
-                                      className="note-check__icon"
-                                      initial={{ opacity: 0, scale: 0.25, filter: "blur(4px)" }}
-                                      animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
-                                      exit={{ opacity: 0, scale: 0.25, filter: "blur(4px)" }}
-                                      transition={{ type: "spring", duration: 0.3, bounce: 0 }}
-                                    >
-                                      <Check size={16} strokeWidth={2.4} />
-                                    </motion.span>
-                                  ) : null}
-                                </AnimatePresence>
-                              </span>
-                            </button>
-                            <span className="sr-only">Right-click or press and hold for note actions.</span>
-                          </motion.article>
-                        );
-                      })}
-                    </AnimatePresence>
-                  </div>
-                </section>
-              ))
-            )}
+                              {isEditing ? (
+                                <textarea
+                                  autoFocus
+                                  className="note-row__editor"
+                                  value={editingNoteText}
+                                  maxLength={5000}
+                                  aria-label="Edit note"
+                                  rows={1}
+                                  onChange={(event) => setEditingNoteText(event.target.value)}
+                                  onInput={(event) => resizeNoteEditor(event.currentTarget)}
+                                  onFocus={(event) => {
+                                    resizeNoteEditor(event.currentTarget);
+                                    const end = event.currentTarget.value.length;
+                                    event.currentTarget.setSelectionRange(end, end);
+                                  }}
+                                  onBlur={(event) => void finishEditingNote(note, event.currentTarget.value)}
+                                  onContextMenu={(event) => event.stopPropagation()}
+                                  onPointerDown={(event) => {
+                                    event.stopPropagation();
+                                    cancelLongPress();
+                                  }}
+                                />
+                              ) : (
+                                <button
+                                  type="button"
+                                  className="note-row__text"
+                                  disabled={isSaving || isSavingEdit}
+                                  aria-label={`Edit note: ${text}`}
+                                  onClick={() => beginEditingNote(note)}
+                                  onContextMenu={(event) => event.stopPropagation()}
+                                  onPointerDown={(event) => {
+                                    event.stopPropagation();
+                                    cancelLongPress();
+                                  }}
+                                >
+                                  {text}
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                className={`note-check ${isChecked ? "is-checked" : ""}`}
+                                aria-label={isChecked ? "Uncheck note" : "Check note"}
+                                aria-pressed={isChecked}
+                                disabled={isSaving || isChecking}
+                                onClick={() => void toggleNoteChecked(note)}
+                                onContextMenu={(event) => event.stopPropagation()}
+                                onPointerDown={(event) => {
+                                  event.stopPropagation();
+                                  cancelLongPress();
+                                }}
+                              >
+                                <span className="note-check__circle" aria-hidden="true">
+                                  <AnimatePresence initial={false}>
+                                    {isChecked ? (
+                                      <motion.span
+                                        key="check"
+                                        className="note-check__icon"
+                                        initial={{ opacity: 0, scale: 0.25, filter: "blur(4px)" }}
+                                        animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
+                                        exit={{ opacity: 0, scale: 0.25, filter: "blur(4px)" }}
+                                        transition={{ type: "spring", duration: 0.3, bounce: 0 }}
+                                      >
+                                        <Check size={16} strokeWidth={2.4} />
+                                      </motion.span>
+                                    ) : null}
+                                  </AnimatePresence>
+                                </span>
+                              </button>
+                              <span className="sr-only">Right-click or press and hold for note actions.</span>
+                            </motion.article>
+                          );
+                        })}
+                      </AnimatePresence>
+                    </motion.div>
+                  </motion.section>
+                ))
+              )}
+            </AnimatePresence>
           </div>
         </section>
 
@@ -618,9 +819,9 @@ export function NotesApp() {
       </AnimatePresence>
 
       <Toaster
-        position="bottom-center"
+        position="bottom-right"
         offset={{ bottom: 108 }}
-        mobileOffset={{ right: 16, bottom: 104, left: 16 }}
+        mobileOffset={{ right: 16, bottom: 104 }}
         visibleToasts={1}
         toastOptions={{
           duration: DELETE_TOAST_DURATION,
@@ -654,12 +855,13 @@ export function NotesApp() {
             <ArrowUp size={18} strokeWidth={2.2} aria-hidden="true" />
           </button>
         </form>
-        <div className="notes-composer__meta">
-          <span className={error ? "is-visible" : ""} role="status">
-            {error || ""}
-          </span>
-          <span>Enter to add · Shift + Enter for a new line</span>
-        </div>
+        {error ? (
+          <div className="notes-composer__meta">
+            <span className="is-visible" role="status">
+              {error}
+            </span>
+          </div>
+        ) : null}
       </footer>
     </main>
   );
