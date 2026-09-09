@@ -2893,7 +2893,7 @@ html {
   padding: 23px 2px 24px;
   border-bottom: 1px solid rgba(7, 16, 69, 0.1);
   outline: none;
-  cursor: context-menu;
+  cursor: text;
   transition-property: background-color, box-shadow;
   transition-duration: 140ms;
   transition-timing-function: ease-out;
@@ -3157,7 +3157,8 @@ html {
   box-shadow: none;
 }
 
-.notes-composer textarea {
+.notes-composer textarea,
+.notes-composer-input {
   width: 100%;
   min-height: 62px;
   max-height: 144px;
@@ -3397,6 +3398,7 @@ html {
 
   .notes-composer-area {
     padding-inline: 12px;
+    padding-bottom: calc(max(18px, env(safe-area-inset-bottom)) + 12px);
   }
 
   .notes-composer__meta > span:last-child {
@@ -3425,4 +3427,75 @@ html {
   .notes-composer__meta > span:first-child {
     transition: none;
   }
+}
+
+.reminder-attachment__body .reminder-attachment__link-title {
+  font-weight: 700;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.note-text-fragment {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: inherit;
+  white-space: pre-wrap;
+  cursor: text;
+}
+
+.note-page-link {
+  color: inherit;
+  font-weight: 700;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+.note-page-link img {
+  display: inline-block;
+  vertical-align: -2px;
+  margin-right: 8px;
+  object-fit: contain;
+}
+
+.note-page-link:hover { text-decoration: underline; }
+.note-page-link:focus-visible,
+.note-text-fragment:focus-visible { outline: 2px solid currentColor; outline-offset: 4px; }
+
+.notes-composer-input {
+  min-height: 28px;
+  max-height: 144px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.notes-composer-input:empty::before {
+  content: attr(data-placeholder);
+  color: var(--muted);
+  pointer-events: none;
+}
+.composer-link-preview {
+  font-weight: 700;
+  cursor: default;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.04);
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+.composer-link-preview img {
+  display: inline-block;
+  vertical-align: -3px;
+  margin-right: 6px;
+  object-fit: contain;
+}
+
+.note-page-link img,
+.composer-link-preview img,
+.reminder-attachment__icon img {
+  border-radius: 4px;
 }

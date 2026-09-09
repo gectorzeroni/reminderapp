@@ -451,7 +451,7 @@ export const ReminderComposer = forwardRef<ReminderComposerHandle, Props>(functi
                             </div>
                           )}
                           <div className="reminder-attachment__body">
-                            <span>{attachment.previewTitle || attachment.url || "Link"}</span>
+                            <span className="reminder-attachment__link-title">{attachment.previewTitle || attachment.url || "Link"}</span>
                             {attachment.url ? <small>{attachment.url}</small> : null}
                           </div>
                         </>

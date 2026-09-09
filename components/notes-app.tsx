@@ -16,6 +16,8 @@ import {
   useState
 } from "react";
 import { Toaster, toast } from "sonner";
+import { NoteComposerInput } from "@/components/note-composer-input";
+import { NoteLinkText } from "@/components/note-link-text";
 import { parseStoredNote } from "@/lib/note";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import type { Reminder } from "@/lib/types";
@@ -153,7 +155,7 @@ export function NotesApp() {
   const [editingNoteText, setEditingNoteText] = useState("");
   const [savingNoteIds, setSavingNoteIds] = useState<Set<string>>(() => new Set());
   const scrollRef = useRef<HTMLDivElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const textareaRef = useRef<HTMLDivElement>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
   const longPressRef = useRef<LongPressGesture | null>(null);
   const noteRenderKeysRef = useRef(new Map<string, string>());
@@ -265,12 +267,6 @@ export function NotesApp() {
     return () => window.cancelAnimationFrame(frame);
   }, [loading, notes.length]);
 
-  useEffect(() => {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-    textarea.style.height = "0px";
-    textarea.style.height = `${Math.min(textarea.scrollHeight, 144)}px`;
-  }, [draft]);
 
   useEffect(() => {
     if (!contextMenu) return;
@@ -347,7 +343,7 @@ export function NotesApp() {
     }
   }
 
-  function handleComposerKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+  function handleComposerKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
     event.preventDefault();
     void createNote();
@@ -676,6 +672,24 @@ export function NotesApp() {
                               tabIndex={isSaving || isEditing ? -1 : 0}
                               aria-label={isSaving || isSavingEdit ? "Saving note" : undefined}
                               aria-busy={isSaving || isSavingEdit}
+                              onClickCapture={(event) => {
+                                if (event.button !== 0 || isSaving || isSavingEdit || isEditing) return;
+                                const checkbox = event.currentTarget.querySelector<HTMLButtonElement>(".note-check");
+                                if (checkbox) {
+                                  if (checkbox.contains(event.target as Node)) return;
+                                  const bounds = checkbox.getBoundingClientRect();
+                                  if (event.detail > 0 &&
+                                      event.clientX >= bounds.left - 8 && event.clientX <= bounds.right + 8 &&
+                                      event.clientY >= bounds.top - 8 && event.clientY <= bounds.bottom + 8) {
+                                    event.preventDefault();
+                                    event.stopPropagation();
+                                    return;
+                                  }
+                                }
+                                event.preventDefault();
+                                event.stopPropagation();
+                                beginEditingNote(note);
+                              }}
                               onContextMenu={isSaving || isEditing ? undefined : (event) => openNoteMenu(event, note.id)}
                               onKeyDown={isSaving || isEditing ? undefined : (event) => openNoteMenuFromKeyboard(event, note.id)}
                               onPointerDown={isSaving || isEditing ? undefined : (event) => startLongPress(event, note.id)}
@@ -707,20 +721,15 @@ export function NotesApp() {
                                   }}
                                 />
                               ) : (
-                                <button
-                                  type="button"
+                                <div
                                   className="note-row__text"
-                                  disabled={isSaving || isSavingEdit}
-                                  aria-label={`Edit note: ${text}`}
-                                  onClick={() => beginEditingNote(note)}
-                                  onContextMenu={(event) => event.stopPropagation()}
                                   onPointerDown={(event) => {
                                     event.stopPropagation();
                                     cancelLongPress();
                                   }}
                                 >
-                                  {text}
-                                </button>
+                                  <NoteLinkText text={text} disabled={isSaving || isSavingEdit} onEdit={() => beginEditingNote(note)} />
+                                </div>
                               )}
                               <button
                                 type="button"
@@ -836,15 +845,11 @@ export function NotesApp() {
 
       <footer className="notes-composer-area">
         <form className="notes-composer" onSubmit={createNote}>
-          <textarea
-            ref={textareaRef}
+          <NoteComposerInput
+            inputRef={textareaRef}
             value={draft}
-            onChange={(event) => setDraft(event.target.value)}
+            onChange={setDraft}
             onKeyDown={handleComposerKeyDown}
-            rows={1}
-            maxLength={5000}
-            placeholder="Write a note…"
-            aria-label="Write a note"
           />
           <button
             type="submit"

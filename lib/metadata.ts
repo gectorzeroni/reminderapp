@@ -19,6 +19,40 @@ function isSafeHttpUrl(raw: string): boolean {
   }
 }
 
+function decodeHtml(value: string): string {
+  const named: Record<string, string> = { amp: "&", quot: '"', apos: "'", lt: "<", gt: ">", nbsp: " ", ndash: "–", mdash: "—", hellip: "…", rsquo: "’", lsquo: "‘", ldquo: "“", rdquo: "”" };
+  return value.replace(/&(#x[\da-f]+|#\d+|[a-z]+);/gi, (match, entity: string) => {
+    if (!entity.startsWith("#")) return named[entity.toLowerCase()] ?? match;
+    const code = entity[1].toLowerCase() === "x" ? parseInt(entity.slice(2), 16) : Number(entity.slice(1));
+    return code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : match;
+  }).replace(/\s+/g, " ").trim();
+}
+
+export function parseLinkMetadata(html: string, pageUrl: string) {
+  const tags = html.replace(/<!--[\s\S]*?-->/g, "").replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "");
+  let socialTitle: string | null = null;
+  let icon: string | null = null;
+  for (const tag of tags.match(/<(?:meta|link)\b[^>]*>/gi) ?? []) {
+    const attrs: Record<string, string> = {};
+    for (const match of tag.matchAll(/([\w:-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/g)) {
+      attrs[match[1].toLowerCase()] = decodeHtml(match[2] ?? match[3] ?? match[4]);
+    }
+    const name = (attrs.property ?? attrs.name ?? "").toLowerCase();
+    if (name === "og:title" && attrs.content) socialTitle = attrs.content;
+    else if (name === "twitter:title" && attrs.content && !socialTitle) socialTitle = attrs.content;
+    if (!icon && /^(?:icon|shortcut icon|apple-touch-icon)$/i.test(attrs.rel ?? "") && attrs.href) {
+      try {
+        const resolved = new URL(attrs.href, pageUrl);
+        if (isSafeHttpUrl(resolved.href)) icon = resolved.href;
+      } catch { /* Ignore malformed icon URLs. */ }
+    }
+  }
+  return {
+    previewTitle: socialTitle || decodeHtml(tags.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i)?.[1] ?? "") || null,
+    previewIconUrl: icon || getDomainFaviconUrl(pageUrl)
+  };
+}
+
 export async function fetchLinkPreview(url: string): Promise<{
   previewTitle: string | null;
   previewIconUrl: string | null;
@@ -42,11 +76,10 @@ export async function fetchLinkPreview(url: string): Promise<{
 
     if (!response.ok) return fallback;
     const html = await response.text();
-    const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+    const metadata = parseLinkMetadata(html, response.url || url);
 
     return {
-      previewTitle: titleMatch?.[1]?.trim() || null,
-      previewIconUrl: getDomainFaviconUrl(url),
+      ...metadata,
       metadataStatus: "ready"
     };
   } catch {

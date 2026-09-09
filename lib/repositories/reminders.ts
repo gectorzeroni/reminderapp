@@ -159,8 +159,8 @@ async function enrichAttachmentsForCreate(
         const metadata = await fetchLinkPreview(base.url);
         return {
           ...base,
-          previewTitle: base.previewTitle || metadata.previewTitle || base.url,
-          previewIconUrl: base.previewIconUrl || metadata.previewIconUrl || getDomainFaviconUrl(base.url),
+          previewTitle: metadata.previewTitle || base.previewTitle || base.url,
+          previewIconUrl: metadata.previewIconUrl || base.previewIconUrl || getDomainFaviconUrl(base.url),
           metadataStatus: metadata.metadataStatus
         };
       }
