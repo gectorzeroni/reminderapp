@@ -6,6 +6,16 @@ import {
 } from "@/lib/repositories/reminders";
 
 describe("note editing", () => {
+  it("persists the feed alongside each note", async () => {
+    const userId = "note-feed-test-user";
+    const standard = await createReminder(userId, { note: "A note", attachments: [] });
+    const idea = await createReminder(userId, { note: "An idea", feed: "ideas", attachments: [] });
+    await updateReminder(userId, idea.id, { note: "An edited idea" });
+    const notes = await getNotes(userId);
+    expect(notes.find((note) => note.id === standard.id)?.feed).toBe("all");
+    expect(notes.find((note) => note.id === idea.id)).toMatchObject({ feed: "ideas", note: "An edited idea" });
+  });
+
   it("persists edited text on the existing reminder", async () => {
     const userId = "note-edit-test-user";
     const created = await createReminder(userId, {

@@ -2801,6 +2801,16 @@ html {
   background: #fffdf3;
   box-shadow: 0 12px 35px rgba(30, 29, 24, .18), 0 2px 8px rgba(30, 29, 24, .06);
   color: #1e1d18;
+  transform-origin: var(--radix-popover-content-transform-origin);
+  animation: profile-menu-enter 160ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+@keyframes profile-menu-enter {
+  from { opacity: 0; transform: scale(0.97); }
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes panel-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 .profile-menu-item {
   display: flex;
@@ -2968,7 +2978,7 @@ html {
   color: #1e1d18;
   font-family: inherit;
   font-size: 18px;
-  font-weight: 500;
+  font-weight: 600;
   line-height: 1.58;
   text-align: left;
   overflow-wrap: anywhere;
@@ -3504,6 +3514,7 @@ html {
 .note-text-fragment:focus-visible { outline: 2px solid currentColor; outline-offset: 4px; }
 
 .notes-composer-input {
+  min-width: 0;
   min-height: 28px;
   max-height: 144px;
   overflow-y: auto;
@@ -3523,6 +3534,17 @@ html {
   -webkit-box-decoration-break: clone;
   box-decoration-break: clone;
 }
+.link-preview--url {
+  display: -webkit-inline-box;
+  max-width: 100%;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+  white-space: normal;
+  vertical-align: bottom;
+}
 .composer-link-preview img {
   display: inline-block;
   vertical-align: -3px;
@@ -3537,7 +3559,7 @@ html {
 }
 
 .notes-header { position: relative; }
-.calendar-panel { margin: 0 5px 5px; padding: 12px 11px 14px; border-radius: 10px; background: rgba(30, 29, 24, .04); color: #1e1d18; font-size: 13px; }
+.calendar-panel { animation: panel-fade-in 150ms cubic-bezier(0.23, 1, 0.32, 1) both; margin: 0 5px 5px; padding: 12px 11px 14px; border-radius: 10px; background: rgba(30, 29, 24, .04); color: #1e1d18; font-size: 13px; }
 .calendar-panel > strong { font-size: 15px; }
 .calendar-panel p { color: rgba(30, 29, 24, .65); line-height: 1.5; margin: 8px 0 14px; }
 .calendar-account { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 0; border-top: 1px solid rgba(30,29,24,.1); }
@@ -3556,4 +3578,86 @@ html {
 
 @media (pointer: coarse) {
   input, textarea, select, [contenteditable="true"] { font-size: max(16px, 1em); }
+}
+
+/* Feed navigation */
+.feed-tabs {
+  position: fixed;
+  z-index: 7;
+  top: calc(100px + env(safe-area-inset-top, 0px));
+  left: 96px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+.feed-tab {
+  min-width: 82px;
+  min-height: 38px;
+  padding: 0 15px;
+  border: 1.5px solid #edaa7f;
+  border-radius: 9px;
+  background: #ffed8c;
+  color: #1e1d18;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: left;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.feed-tab.is-active { background: #edaa7f; }
+.feed-tab:focus-visible, .feed-mobile-trigger:focus-visible, .feed-popover__item:focus-visible { outline: 2px solid #1e1d18; outline-offset: 2px; }
+@media (hover: hover) and (pointer: fine) {
+  .feed-tab:hover, .feed-popover__item:hover { background: #f6c593; }
+}
+.feed-mobile-trigger { display: none; }
+.feed-popover {
+  z-index: 20;
+  min-width: 150px;
+  padding: 5px;
+  border: 1px solid #edaa7f;
+  border-radius: 12px;
+  background: #fff8c9;
+  box-shadow: 0 8px 24px rgba(30, 29, 24, .12);
+}
+.feed-popover__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #1e1d18;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.feed-mobile-trigger:active, .feed-popover__item:active { background: #f6c593; }
+@media (max-width: 960px) {
+  .feed-tabs, .notes-brand__wordmark { display: none; }
+  .feed-mobile-trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 44px;
+    padding: 0 9px;
+    margin-left: -9px;
+    border: 0;
+    border-radius: 9px;
+    background: transparent;
+    color: #1e1d18;
+    font-size: 18px;
+    font-weight: 700;
+    cursor: pointer;
+    touch-action: manipulation;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .profile-popover { animation-name: panel-fade-in; }
 }

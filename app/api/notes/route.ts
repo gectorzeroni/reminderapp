@@ -16,9 +16,10 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const userId = await getCurrentUserId();
-    const { text } = createNoteSchema.parse(await request.json());
+    const { text, feed } = createNoteSchema.parse(await request.json());
     const note = await createReminder(userId, {
       note: text,
+      feed,
       remindAt: null,
       attachments: []
     });

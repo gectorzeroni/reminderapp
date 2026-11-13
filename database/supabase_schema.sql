@@ -36,6 +36,7 @@ create table if not exists public.reminders (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references public.profiles(id) on delete cascade,
   note text,
+  feed text not null default 'all' check (feed in ('all', 'ideas')),
   pinned boolean not null default false,
   checked boolean not null default false,
   status reminder_status not null default 'upcoming',

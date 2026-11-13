@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { updateNoteSchema } from "@/lib/validation";
+import { createNoteSchema, updateNoteSchema } from "@/lib/validation";
 
 describe("updateNoteSchema", () => {
   it("accepts note text and trims its outer whitespace", () => {
@@ -15,5 +15,14 @@ describe("updateNoteSchema", () => {
   it("rejects empty notes and empty updates", () => {
     expect(updateNoteSchema.safeParse({ note: "   " }).success).toBe(false);
     expect(updateNoteSchema.safeParse({}).success).toBe(false);
+  });
+});
+
+
+describe("createNoteSchema feed", () => {
+  it("defaults existing clients to All and accepts Ideas", () => {
+    expect(createNoteSchema.parse({ text: "Note" }).feed).toBe("all");
+    expect(createNoteSchema.parse({ text: "Idea", feed: "ideas" }).feed).toBe("ideas");
+    expect(createNoteSchema.safeParse({ text: "Note", feed: "other" }).success).toBe(false);
   });
 });

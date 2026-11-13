@@ -26,6 +26,7 @@ type StoreState = {
 type DbReminderRow = {
   id: string;
   user_id: string;
+  feed?: "all" | "ideas" | null;
   note: string | null;
   pinned?: boolean | null;
   checked?: boolean | null;
@@ -204,6 +205,7 @@ function mapReminderRow(row: DbReminderRow): Reminder {
   return {
     id: row.id,
     userId: row.user_id,
+    feed: row.feed === "ideas" ? "ideas" : "all",
     note: row.note,
     pinned: Boolean(row.pinned),
     checked: Boolean(row.checked),
@@ -327,6 +329,7 @@ async function createReminderLocal(userId: string, input: CreateReminderInput): 
   const reminder: Reminder = {
     id: reminderId,
     userId,
+    feed: input.feed ?? "all",
     note: input.note?.trim() || null,
     pinned: false,
     checked: false,
@@ -500,6 +503,7 @@ async function createReminderSupabase(userId: string, input: CreateReminderInput
   const { error: reminderError } = await supabase.from("reminders").insert({
     id: reminderId,
     user_id: userId,
+    ...(input.feed === "ideas" ? { feed: "ideas" } : {}),
     note: input.note?.trim() || null,
     pinned: false,
     checked: false,
