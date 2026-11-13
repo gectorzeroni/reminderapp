@@ -2,8 +2,9 @@
 
 import { play } from "cuelume";
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowUp, Check, LogOut, Trash2 } from "lucide-react";
+import { ArrowUp, CalendarDays, Check, ChevronDown, LogOut, Trash2, UserRound } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { Popover } from "radix-ui";
 import {
   type CSSProperties,
   type FormEvent,
@@ -19,15 +20,12 @@ import { Toaster, toast } from "sonner";
 import { NoteComposerInput } from "@/components/note-composer-input";
 import { NoteLinkText } from "@/components/note-link-text";
 import { parseStoredNote } from "@/lib/note";
+import { calendarEventEndTime, hasCalendarEventEnded, type CalendarEvent } from "@/lib/calendar-events";
+import { groupNotesByPeriod, localDateKey } from "@/lib/timeline";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import type { Reminder } from "@/lib/types";
 
-type WeekGroup = {
-  key: string;
-  label: string;
-  shortLabel: string;
-  notes: Reminder[];
-};
+type CalendarAccount = { id: string; email: string };
 
 type NoteContextMenu = {
   noteId: string;
@@ -54,56 +52,46 @@ const dayFormatter = new Intl.DateTimeFormat("en-US", {
   day: "numeric"
 });
 
-function startOfWeek(value: string) {
-  const date = new Date(value);
-  date.setHours(0, 0, 0, 0);
-  const mondayOffset = (date.getDay() + 6) % 7;
-  date.setDate(date.getDate() - mondayOffset);
-  return date;
-}
-
-function localDateKey(date: Date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-function formatWeekLabel(start: Date) {
-  const end = new Date(start);
-  end.setDate(end.getDate() + 6);
-
-  const startLabel = dayFormatter.format(start);
-  const endLabel = dayFormatter.format(end);
-  return `${startLabel} – ${endLabel}, ${end.getFullYear()}`;
-}
-
-function groupNotesByWeek(notes: Reminder[]): WeekGroup[] {
-  const groups = new Map<string, WeekGroup>();
-
-  for (const note of notes) {
-    const weekStart = startOfWeek(note.createdAt);
-    const key = localDateKey(weekStart);
-    const existing = groups.get(key);
-    if (existing) {
-      existing.notes.push(note);
-      continue;
-    }
-
-    groups.set(key, {
-      key,
-      label: formatWeekLabel(weekStart),
-      shortLabel: dayFormatter.format(weekStart),
-      notes: [note]
-    });
-  }
-
-  return Array.from(groups.values());
-}
-
 function sortChronologically(notes: Reminder[]) {
   return [...notes].sort(
     (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+  );
+}
+
+function TodayEvents({ events }: { events: CalendarEvent[] }) {
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    let timer: number | undefined;
+    function updateTime() {
+      const current = Date.now();
+      setNow(current);
+      if (timer !== undefined) window.clearTimeout(timer);
+      const nextEnd = events.map(calendarEventEndTime).filter((time): time is number => time !== null && time > current).sort((a, b) => a - b)[0];
+      if (nextEnd !== undefined) timer = window.setTimeout(updateTime, Math.min(nextEnd - current + 1, 2_147_483_647));
+    }
+    updateTime();
+    document.addEventListener("visibilitychange", updateTime);
+    return () => {
+      if (timer !== undefined) window.clearTimeout(timer);
+      document.removeEventListener("visibilitychange", updateTime);
+    };
+  }, [events]);
+
+  return (
+    <div className="notes-today">
+      <div className="notes-week__heading"><h2>Today · {dayFormatter.format(new Date())}</h2></div>
+      {[...events].sort((a, b) => Number(b.allDay) - Number(a.allDay) || a.start.localeCompare(b.start)).map((event) => {
+        const ended = hasCalendarEventEnded(event, now);
+        return (
+          <div className="calendar-event" key={event.id}>
+            <CalendarDays size={17} aria-hidden="true" />
+            <div>{event.url ? <a href={event.url} target="_blank" rel="noreferrer">{event.title}</a> : <span>{event.title}</span>}<small>{event.allDay ? "All day" : new Date(event.start).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} · {event.account}</small></div>
+            {ended ? <span className="note-check is-checked calendar-event__check" role="img" aria-label="Event ended"><span className="note-check__circle"><Check size={16} strokeWidth={2.4} aria-hidden="true" /></span></span> : null}
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
@@ -146,9 +134,15 @@ export function NotesApp() {
   const router = useRouter();
   const [notes, setNotes] = useState<Reminder[]>([]);
   const [draft, setDraft] = useState("");
+  const [todayKey, setTodayKey] = useState(() => localDateKey(new Date()));
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [calendarOpen, setCalendarOpen] = useState(false);
+  const [calendarAccounts, setCalendarAccounts] = useState<CalendarAccount[]>([]);
+  const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
+  const [calendarError, setCalendarError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeWeek, setActiveWeek] = useState<string | null>(null);
+  const [activePeriod, setActivePeriod] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<NoteContextMenu | null>(null);
   const [checkingNoteIds, setCheckingNoteIds] = useState<Set<string>>(() => new Set());
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
@@ -158,31 +152,124 @@ export function NotesApp() {
   const textareaRef = useRef<HTMLDivElement>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
   const longPressRef = useRef<LongPressGesture | null>(null);
+  const suppressLongPressClickRef = useRef<string | null>(null);
   const noteRenderKeysRef = useRef(new Map<string, string>());
   const pendingDeletionRef = useRef<PendingDeletion | null>(null);
   const shouldScrollToLatestRef = useRef(true);
   const scrollBehaviorRef = useRef<ScrollBehavior>("auto");
+  const calendarShouldScrollRef = useRef(false);
 
-  const weekGroups = useMemo(() => groupNotesByWeek(notes), [notes]);
+  const timelineGroups = useMemo(() => {
+    const [year, month, day] = todayKey.split("-").map(Number);
+    return groupNotesByPeriod(notes, new Date(year, month - 1, day));
+  }, [notes, todayKey]);
 
-  function syncActiveWeek() {
+  useEffect(() => {
+    let timer: number;
+    function updateToday() {
+      const now = new Date();
+      setTodayKey(localDateKey(now));
+      const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+      window.clearTimeout(timer);
+      timer = window.setTimeout(updateToday, midnight.getTime() - now.getTime() + 50);
+    }
+    updateToday();
+    document.addEventListener("visibilitychange", updateToday);
+    return () => { window.clearTimeout(timer); document.removeEventListener("visibilitychange", updateToday); };
+  }, []);
+
+  async function loadCalendar() {
+    try {
+      const accountsResponse = await fetch("/api/calendar/accounts", { cache: "no-store" });
+      const accountsBody = await accountsResponse.json();
+      if (!accountsResponse.ok) throw new Error(accountsBody.error || "Could not load calendar accounts");
+      setCalendarAccounts(accountsBody.accounts);
+      if (!accountsBody.accounts.length) { setCalendarEvents([]); return; }
+      const start = new Date(); start.setHours(0, 0, 0, 0);
+      const end = new Date(start); end.setDate(end.getDate() + 1);
+      const response = await fetch(`/api/calendar/events?start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}`, { cache: "no-store" });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || "Could not load calendar events");
+      const scroller = scrollRef.current;
+      calendarShouldScrollRef.current = !!scroller && scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 32;
+      setCalendarEvents(body.events);
+      setCalendarError(body.errors?.join(" ") || null);
+    } catch (error) { setCalendarError(error instanceof Error ? error.message : "Could not load calendar"); }
+  }
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.has("calendar_error")) { setProfileOpen(true); setCalendarOpen(true); setCalendarError(params.get("calendar_error")); }
+    if (params.has("calendar") || params.has("calendar_error")) window.history.replaceState(null, "", window.location.pathname);
+    let timer: number | undefined;
+    let running = false;
+    let stopped = false;
+
+    async function refreshWhenVisible() {
+      if (timer !== undefined) window.clearTimeout(timer);
+      if (stopped || document.visibilityState !== "visible" || running) return;
+      running = true;
+      try {
+        await loadCalendar();
+      } finally {
+        running = false;
+        if (!stopped && document.visibilityState === "visible") {
+          timer = window.setTimeout(() => void refreshWhenVisible(), 15_000);
+        }
+      }
+    }
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === "visible") void refreshWhenVisible();
+      else if (timer !== undefined) window.clearTimeout(timer);
+    }
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", refreshWhenVisible);
+    void refreshWhenVisible();
+    return () => {
+      stopped = true;
+      if (timer !== undefined) window.clearTimeout(timer);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", refreshWhenVisible);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (loading || !calendarShouldScrollRef.current) return;
+    calendarShouldScrollRef.current = false;
+    const frame = window.requestAnimationFrame(() => {
+      const scroller = scrollRef.current;
+      if (scroller) scroller.scrollTo({ top: scroller.scrollHeight, behavior: "auto" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [calendarEvents, loading]);
+
+  async function disconnectCalendar(id: string) {
+    const response = await fetch(`/api/calendar/accounts/${id}`, { method: "DELETE" });
+    if (!response.ok) { setCalendarError("Could not disconnect this account."); return; }
+    setCalendarError(null);
+    await loadCalendar();
+  }
+
+  function syncActivePeriod() {
     const scroller = scrollRef.current;
-    if (!scroller || weekGroups.length === 0) return;
+    if (!scroller || timelineGroups.length === 0) return;
 
     const scrollerRect = scroller.getBoundingClientRect();
     const marker = scrollerRect.top + Math.min(160, scrollerRect.height * 0.32);
-    let next = weekGroups[0]?.key ?? null;
+    let next = timelineGroups[0]?.key ?? null;
 
-    for (const group of weekGroups) {
-      const section = document.getElementById(`week-${group.key}`);
+    for (const group of timelineGroups) {
+      const section = document.getElementById(`period-${group.key}`);
       if (section && section.getBoundingClientRect().top <= marker) next = group.key;
     }
 
     if (scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 8) {
-      next = weekGroups.at(-1)?.key ?? next;
+      next = timelineGroups.at(-1)?.key ?? next;
     }
 
-    setActiveWeek((current) => (current === next ? current : next));
+    setActivePeriod((current) => (current === next ? current : next));
   }
 
   useEffect(() => {
@@ -262,7 +349,7 @@ export function NotesApp() {
       scroller.scrollTo({ top: scroller.scrollHeight, behavior: scrollBehaviorRef.current });
       shouldScrollToLatestRef.current = false;
       scrollBehaviorRef.current = "auto";
-      window.requestAnimationFrame(syncActiveWeek);
+      window.requestAnimationFrame(syncActivePeriod);
     });
     return () => window.cancelAnimationFrame(frame);
   }, [loading, notes.length]);
@@ -410,11 +497,15 @@ export function NotesApp() {
     }
   }
 
-  function jumpToWeek(key: string) {
-    setActiveWeek(key);
-    document.getElementById(`week-${key}`)?.scrollIntoView({
-      behavior: "smooth",
-      block: "start"
+  function jumpToPeriod(key: string) {
+    const scroller = scrollRef.current;
+    const section = document.getElementById(`period-${key}`);
+    if (!scroller || !section) return;
+    setActivePeriod(key);
+    const top = scroller.scrollTop + section.getBoundingClientRect().top - scroller.getBoundingClientRect().top - 28;
+    scroller.scrollTo({
+      top,
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth"
     });
   }
 
@@ -493,6 +584,8 @@ export function NotesApp() {
 
   function startLongPress(event: ReactPointerEvent<HTMLElement>, noteId: string) {
     if (event.pointerType !== "touch") return;
+    suppressLongPressClickRef.current = null;
+    if ((event.target as HTMLElement).closest("a")) return;
     cancelLongPress();
     const gesture: LongPressGesture = {
       noteId,
@@ -504,6 +597,7 @@ export function NotesApp() {
     gesture.timerId = window.setTimeout(() => {
       if (longPressRef.current?.pointerId !== gesture.pointerId) return;
       longPressRef.current = null;
+      suppressLongPressClickRef.current = gesture.noteId;
       showNoteMenu(gesture.noteId, gesture.x, gesture.y);
     }, 550);
     longPressRef.current = gesture;
@@ -597,10 +691,36 @@ export function NotesApp() {
           <div className="notes-brand">
             <span className="notes-brand__wordmark">Later™</span>
           </div>
-          <button type="button" className="notes-logout" aria-label="Log out" onClick={logOut}>
-            <LogOut size={15} strokeWidth={1.8} aria-hidden="true" />
-            <span>Log out</span>
-          </button>
+          <Popover.Root open={profileOpen} onOpenChange={(open) => {
+            setProfileOpen(open);
+            if (!open) setCalendarOpen(false);
+          }}>
+            <Popover.Trigger asChild>
+              <button type="button" className="profile-trigger" aria-label="Profile menu">
+                <UserRound size={19} strokeWidth={1.8} aria-hidden="true" />
+              </button>
+            </Popover.Trigger>
+            <Popover.Portal>
+              <Popover.Content className="profile-popover" align="end" sideOffset={8} collisionPadding={16} aria-label="Profile menu">
+                <button type="button" className="profile-menu-item" aria-expanded={calendarOpen} aria-controls="profile-calendar" onClick={() => setCalendarOpen((open) => !open)}>
+                  <CalendarDays size={17} strokeWidth={1.8} aria-hidden="true" />
+                  <span>Calendar</span>
+                  <ChevronDown className={`profile-menu-item__chevron ${calendarOpen ? "is-open" : ""}`} size={15} aria-hidden="true" />
+                </button>
+                {calendarOpen ? <div id="profile-calendar" className="calendar-panel" role="region" aria-label="Google Calendar accounts">
+                  <strong>Google Calendar</strong>
+                  <p>Show events from up to two Google accounts in today’s list.</p>
+                  {calendarAccounts.map((account) => <div className="calendar-account" key={account.id}><span>{account.email}</span><button type="button" onClick={() => void disconnectCalendar(account.id)}>Disconnect</button></div>)}
+                  {calendarAccounts.length < 2 ? <a className="calendar-connect" href="/api/calendar/connect">Connect Google Calendar</a> : null}
+                  {calendarError ? <p className="calendar-error" role="status">{calendarError}</p> : null}
+                </div> : null}
+                <button type="button" className="profile-menu-item" onClick={logOut}>
+                  <LogOut size={17} strokeWidth={1.8} aria-hidden="true" />
+                  <span>Log out</span>
+                </button>
+              </Popover.Content>
+            </Popover.Portal>
+          </Popover.Root>
         </div>
       </header>
 
@@ -612,7 +732,7 @@ export function NotesApp() {
           aria-busy={loading}
           onScroll={() => {
             cancelLongPress();
-            syncActiveWeek();
+            syncActivePeriod();
             setContextMenu(null);
           }}
         >
@@ -623,44 +743,41 @@ export function NotesApp() {
                   <span className="notes-state__pulse" aria-hidden="true" />
                   Loading notes
                 </motion.div>
-              ) : notes.length === 0 ? (
-                <motion.div key="empty" layout="position" className="notes-state notes-state--empty">
-                  <p>Your timeline is empty.</p>
-                  <span>Write your first note below.</span>
-                </motion.div>
               ) : (
-                weekGroups.map((group) => (
+                timelineGroups.map((group) => (
                   <motion.section
                     key={group.key}
-                    id={`week-${group.key}`}
-                    data-week-key={group.key}
+                    id={`period-${group.key}`}
+                    data-period-key={group.key}
                     layout="position"
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -8, transition: { duration: 0.14, ease: "easeIn" } }}
                     transition={{ type: "spring", duration: 0.3, bounce: 0 }}
                     className="notes-week"
-                    aria-labelledby={`week-label-${group.key}`}
+                    aria-labelledby={`period-label-${group.key}`}
                   >
-                    <motion.div
-                      layout="position"
-                      className="notes-week__heading"
-                      transition={{ type: "spring", duration: 0.3, bounce: 0 }}
-                    >
-                      <h2 id={`week-label-${group.key}`}>{group.label}</h2>
-                    </motion.div>
+                    {group.key === "today" ? (
+                      <span className="sr-only" id={`period-label-${group.key}`}>{group.label}</span>
+                    ) : (
+                      <div className="notes-week__heading"><h2 id={`period-label-${group.key}`}>{group.label}</h2></div>
+                    )}
                     <motion.div
                       layout="position"
                       className="notes-week__items"
                       transition={{ type: "spring", duration: 0.3, bounce: 0 }}
                     >
+                      {group.key === "today" ? <TodayEvents events={calendarEvents} /> : null}
                       <AnimatePresence initial={false} mode="popLayout">
-                        {group.notes.map((note) => {
+                        {group.notes.map((note, index) => {
                           const text = parseStoredNote(note.note).plainText;
                           const isSaving = isOptimisticNote(note);
                           const isEditing = editingNoteId === note.id;
                           const isSavingEdit = savingNoteIds.has(note.id);
                           const isChecked = note.checked;
                           const isChecking = checkingNoteIds.has(note.id);
+                          const dateKey = localDateKey(new Date(note.createdAt));
+                          const nextKey = index + 1 < group.notes.length ? localDateKey(new Date(group.notes[index + 1].createdAt)) : null;
+                          const isLastOfDay = dateKey !== nextKey;
                           return (
                             <motion.article
                               key={noteRenderKeysRef.current.get(note.id) ?? note.id}
@@ -668,11 +785,17 @@ export function NotesApp() {
                               animate={{ opacity: 1, y: 0 }}
                               exit={{ opacity: 0, y: -8, transition: { duration: 0.14, ease: "easeIn" } }}
                               transition={{ type: "spring", duration: 0.3, bounce: 0 }}
-                              className={`note-row ${isEditing ? "is-editing" : ""} ${contextMenu?.noteId === note.id ? "has-open-menu" : ""}`}
+                              className={`note-row ${isLastOfDay ? "is-last-of-day" : ""} ${isEditing ? "is-editing" : ""} ${contextMenu?.noteId === note.id ? "has-open-menu" : ""}`}
                               tabIndex={isSaving || isEditing ? -1 : 0}
                               aria-label={isSaving || isSavingEdit ? "Saving note" : undefined}
                               aria-busy={isSaving || isSavingEdit}
                               onClickCapture={(event) => {
+                                if (suppressLongPressClickRef.current === note.id) {
+                                  suppressLongPressClickRef.current = null;
+                                  event.preventDefault();
+                                  event.stopPropagation();
+                                  return;
+                                }
                                 if (event.button !== 0 || isSaving || isSavingEdit || isEditing) return;
                                 const checkbox = event.currentTarget.querySelector<HTMLButtonElement>(".note-check");
                                 if (checkbox) {
@@ -721,13 +844,7 @@ export function NotesApp() {
                                   }}
                                 />
                               ) : (
-                                <div
-                                  className="note-row__text"
-                                  onPointerDown={(event) => {
-                                    event.stopPropagation();
-                                    cancelLongPress();
-                                  }}
-                                >
+                                <div className="note-row__text">
                                   <NoteLinkText text={text} disabled={isSaving || isSavingEdit} onEdit={() => beginEditingNote(note)} />
                                 </div>
                               )}
@@ -774,18 +891,17 @@ export function NotesApp() {
           </div>
         </section>
 
-        {weekGroups.length > 0 ? (
-          <nav className="timeline-rail" aria-label="Jump to week">
-            <span className="timeline-rail__line" aria-hidden="true" />
+        {timelineGroups.length > 0 ? (
+          <nav className="timeline-rail" aria-label="Jump to date group">
             <div className="timeline-rail__ticks">
-              {weekGroups.map((group) => (
+              {timelineGroups.map((group) => (
                 <button
                   key={group.key}
                   type="button"
-                  className={`timeline-tick ${activeWeek === group.key ? "is-active" : ""}`}
-                  aria-label={`Jump to week of ${group.label}`}
-                  aria-current={activeWeek === group.key ? "date" : undefined}
-                  onClick={() => jumpToWeek(group.key)}
+                  className={`timeline-tick ${activePeriod === group.key ? "is-active" : ""}`}
+                  aria-label={`Jump to ${group.label}`}
+                  aria-current={activePeriod === group.key ? "date" : undefined}
+                  onClick={() => jumpToPeriod(group.key)}
                 >
                   <span className="timeline-tick__mark" aria-hidden="true" />
                   <span className="timeline-tick__label" aria-hidden="true">
