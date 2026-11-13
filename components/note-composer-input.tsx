@@ -90,6 +90,7 @@ export function NoteComposerInput({ value, onChange, onKeyDown, inputRef }: {
     role="textbox"
     aria-label="Write a note"
     aria-multiline="true"
+    enterKeyHint="send"
     data-placeholder="Write a note…"
     onInput={emit}
     onKeyDown={onKeyDown}

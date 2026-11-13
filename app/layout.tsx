@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 import "@fontsource/rubik-spray-paint/index.css";
 import { AgentationOverlay } from "@/components/agentation-overlay";
@@ -7,6 +7,14 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Later™",
   description: "A quiet timeline for your notes."
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  interactiveWidget: "resizes-content",
+  themeColor: "#ffed8c"
 };
 
 export default function RootLayout({

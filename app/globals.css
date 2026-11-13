@@ -32,6 +32,18 @@ body {
   margin: 0;
   padding: 0;
   min-height: 100%;
+  overscroll-behavior: none;
+}
+
+html {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+}
+
+button, a, [role="button"] { touch-action: manipulation; }
+button:not(.note-text-fragment), [role="button"] {
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 body {
@@ -2700,10 +2712,10 @@ html {
   position: relative;
   isolation: isolate;
   height: 100dvh;
-  min-height: 520px;
+  min-height: 0;
   overflow: hidden;
   display: grid;
-  grid-template-rows: 68px minmax(0, 1fr) auto;
+  grid-template-rows: calc(68px + env(safe-area-inset-top, 0px)) minmax(0, 1fr) auto;
   background: #ffed8c;
 }
 
@@ -2738,6 +2750,7 @@ html {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  padding-top: env(safe-area-inset-top, 0px);
 }
 
 .notes-brand {
@@ -2754,40 +2767,64 @@ html {
   color: #1e1d18;
 }
 
-.notes-logout {
-  min-width: 40px;
-  min-height: 40px;
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: 0 12px 0 14px;
+.profile-trigger {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
   border: 0;
-  border-radius: 12px;
-  background: transparent;
-  color: rgba(30, 29, 24, 0.64);
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 700;
-  transition-property: color, background-color, scale;
-  transition-duration: 150ms;
-  transition-timing-function: ease-out;
-}
-
-.notes-logout:hover {
+  border-radius: 50%;
+  background: rgba(30, 29, 24, 0.08);
   color: #1e1d18;
-  background: rgba(28, 28, 28, 0.06);
+  cursor: pointer;
+  transition: background-color 150ms ease-out, scale 150ms ease-out;
 }
 
-.notes-logout:active {
-  scale: 0.96;
+.profile-trigger[data-state="open"] { background: rgba(30, 29, 24, 0.14); }
+@media (hover: hover) and (pointer: fine) {
+  .profile-trigger:hover { background: rgba(30, 29, 24, 0.14); }
 }
-
-.notes-logout:focus-visible,
+.profile-trigger:active { scale: 0.96; }
+.profile-trigger:focus-visible,
+.profile-menu-item:focus-visible,
 .timeline-tick:focus-visible,
 .notes-send:focus-visible {
   outline: 2px solid rgba(28, 28, 28, 0.72);
   outline-offset: 2px;
 }
+
+.profile-popover {
+  z-index: 20;
+  width: min(300px, calc(100vw - 32px));
+  padding: 6px;
+  border-radius: 16px;
+  background: #fffdf3;
+  box-shadow: 0 12px 35px rgba(30, 29, 24, .18), 0 2px 8px rgba(30, 29, 24, .06);
+  color: #1e1d18;
+}
+.profile-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  min-height: 42px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+}
+@media (hover: hover) and (pointer: fine) {
+  .profile-menu-item:hover { background: rgba(30, 29, 24, .06); }
+}
+.profile-menu-item:active { background: rgba(30, 29, 24, .09); }
+.profile-menu-item svg { color: rgba(30, 29, 24, .65); flex: none; }
+.profile-menu-item__chevron { margin-left: auto; transition: transform 150ms ease-out; }
+.profile-menu-item__chevron.is-open { transform: rotate(180deg); }
 
 .notes-stage {
   min-height: 0;
@@ -2800,7 +2837,6 @@ html {
   overflow-y: auto;
   overscroll-behavior-y: contain;
   scrollbar-width: none;
-  scroll-behavior: smooth;
 }
 
 .notes-scroll::-webkit-scrollbar,
@@ -2885,6 +2921,10 @@ html {
   border-top: 1px solid rgba(7, 16, 69, 0.1);
 }
 
+.notes-week__items:has(> .notes-today:first-child) {
+  border-top: 0;
+}
+
 .note-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 40px;
@@ -2899,12 +2939,15 @@ html {
   transition-timing-function: ease-out;
 }
 
-.note-row:hover,
 .note-row.has-open-menu,
 .note-row.is-editing,
 .note-row:focus-visible {
   background: #fff7b4;
   box-shadow: 12px 0 0 #fff7b4, -12px 0 0 #fff7b4;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .note-row:hover { background: #fff7b4; box-shadow: 12px 0 0 #fff7b4, -12px 0 0 #fff7b4; }
 }
 
 .note-row:focus-visible {
@@ -2992,9 +3035,11 @@ html {
   place-items: center;
 }
 
-.note-check:hover .note-check__circle {
-  border-color: #1e1d18;
-  background: #fff7b4;
+@media (hover: hover) and (pointer: fine) {
+  .note-check:hover .note-check__circle {
+    border-color: #1e1d18;
+    background: #fff7b4;
+  }
 }
 
 .note-check.is-checked .note-check__circle {
@@ -3017,7 +3062,7 @@ html {
   opacity: 0.32;
 }
 
-.notes-week:last-child .note-row:last-child {
+.note-row.is-last-of-day {
   border-bottom: 0;
 }
 
@@ -3033,15 +3078,6 @@ html {
   place-items: center;
 }
 
-.timeline-rail__line {
-  position: absolute;
-  top: 20px;
-  bottom: 20px;
-  right: 8px;
-  width: 1px;
-  background: rgba(7, 16, 69, 0.1);
-}
-
 .timeline-rail__ticks {
   width: 100%;
   max-height: 100%;
@@ -3051,7 +3087,7 @@ html {
 .timeline-tick {
   position: relative;
   width: 44px;
-  height: 40px;
+  height: 10px;
   display: flex;
   align-items: center;
   justify-content: flex-end;
@@ -3074,15 +3110,18 @@ html {
   transition-timing-function: ease-out;
 }
 
-.timeline-tick:hover .timeline-tick__mark,
 .timeline-tick:focus-visible .timeline-tick__mark {
   width: 18px;
   background: rgba(7, 16, 69, 0.64);
 }
 
+@media (hover: hover) and (pointer: fine) {
+  .timeline-tick:hover .timeline-tick__mark { width: 18px; background: rgba(7, 16, 69, 0.64); }
+}
+
 .timeline-tick.is-active .timeline-tick__mark {
   width: 22px;
-  height: 3px;
+  height: 2px;
   background: var(--accent);
 }
 
@@ -3115,11 +3154,14 @@ html {
   transition-timing-function: ease-out;
 }
 
-.timeline-tick:hover .timeline-tick__label,
 .timeline-tick:focus-visible .timeline-tick__label {
   opacity: 1;
   translate: 0 -50%;
   transform: scale(1);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .timeline-tick:hover .timeline-tick__label { opacity: 1; translate: 0 -50%; transform: scale(1); }
 }
 
 .timeline-tick__label strong {
@@ -3195,8 +3237,8 @@ html {
   transition-timing-function: ease-out;
 }
 
-.notes-send:hover:not(:disabled) {
-  background: #111111;
+@media (hover: hover) and (pointer: fine) {
+  .notes-send:hover:not(:disabled) { background: #111111; }
 }
 
 .notes-send:active:not(:disabled) {
@@ -3267,15 +3309,15 @@ html {
   transition-timing-function: ease-out;
 }
 
-.note-context-menu button:hover,
 .note-context-menu button:focus-visible {
   background: rgba(179, 38, 46, 0.09);
   outline: none;
 }
 
-.note-context-menu button:active {
-  scale: 0.96;
+@media (hover: hover) and (pointer: fine) {
+  .note-context-menu button:hover { background: rgba(179, 38, 46, 0.09); }
 }
+.note-context-menu button:active { scale: 0.96; background: rgba(179, 38, 46, 0.09); }
 
 .note-delete-toast {
   position: relative;
@@ -3315,13 +3357,15 @@ html {
   transition-timing-function: ease-out;
 }
 
-.note-delete-toast__action:hover,
 .note-delete-toast__action:focus-visible {
   outline: none;
   background: rgba(255, 255, 255, 0.18);
   color: white;
 }
 
+@media (hover: hover) and (pointer: fine) {
+  .note-delete-toast__action:hover { background: rgba(255, 255, 255, 0.18); color: white; }
+}
 .note-delete-toast__action:active {
   scale: 0.96;
 }
@@ -3351,8 +3395,7 @@ html {
 
 @media (max-width: 560px) {
   .notes-app {
-    grid-template-rows: 60px minmax(0, 1fr) auto;
-    min-height: 440px;
+    grid-template-rows: calc(60px + env(safe-area-inset-top, 0px)) minmax(0, 1fr) auto;
   }
 
   .notes-app::before {
@@ -3361,21 +3404,12 @@ html {
 
   .notes-header__inner,
   .notes-list {
-    width: calc(100% - 56px);
-    margin-left: 18px;
+    width: calc(100% - 56px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px));
+    margin-left: calc(18px + env(safe-area-inset-left, 0px));
   }
 
   .notes-list {
     padding-top: 36px;
-  }
-
-  .notes-logout {
-    padding: 0;
-    justify-content: center;
-  }
-
-  .notes-logout span {
-    display: none;
   }
 
   .notes-week + .notes-week {
@@ -3387,18 +3421,18 @@ html {
     gap: 12px;
     padding-block: 20px;
     touch-action: pan-y;
-    -webkit-touch-callout: none;
-    -webkit-user-select: none;
-    user-select: none;
   }
 
   .timeline-tick__label {
     right: 32px;
   }
 
+  .timeline-rail { right: calc(12px + env(safe-area-inset-right, 0px)); }
+
   .notes-composer-area {
-    padding-inline: 12px;
-    padding-bottom: calc(max(18px, env(safe-area-inset-bottom)) + 12px);
+    padding-left: calc(12px + env(safe-area-inset-left, 0px));
+    padding-right: calc(12px + env(safe-area-inset-right, 0px));
+    padding-bottom: calc(18px + env(safe-area-inset-bottom, 0px));
   }
 
   .notes-composer__meta > span:last-child {
@@ -3463,7 +3497,9 @@ html {
   object-fit: contain;
 }
 
-.note-page-link:hover { text-decoration: underline; }
+@media (hover: hover) and (pointer: fine) {
+  .note-page-link:hover { text-decoration: underline; }
+}
 .note-page-link:focus-visible,
 .note-text-fragment:focus-visible { outline: 2px solid currentColor; outline-offset: 4px; }
 
@@ -3498,4 +3534,26 @@ html {
 .composer-link-preview img,
 .reminder-attachment__icon img {
   border-radius: 4px;
+}
+
+.notes-header { position: relative; }
+.calendar-panel { margin: 0 5px 5px; padding: 12px 11px 14px; border-radius: 10px; background: rgba(30, 29, 24, .04); color: #1e1d18; font-size: 13px; }
+.calendar-panel > strong { font-size: 15px; }
+.calendar-panel p { color: rgba(30, 29, 24, .65); line-height: 1.5; margin: 8px 0 14px; }
+.calendar-account { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 0; border-top: 1px solid rgba(30,29,24,.1); }
+.calendar-account span { overflow-wrap: anywhere; }
+.calendar-account button { border: 0; background: transparent; color: #7a4331; cursor: pointer; padding: 8px; }
+.calendar-connect { display: inline-block; padding: 10px 12px; border-radius: 9px; background: #1e1d18; color: white; text-decoration: none; font-weight: 700; }
+.calendar-panel .calendar-error { color: #a43b2d; margin-bottom: 0; }
+.notes-list { justify-content: flex-end; }
+.calendar-event { display: grid; grid-template-columns: 17px minmax(0, 1fr) 40px; gap: 13px; align-items: center; padding: 20px 2px; border-top: 1px solid rgba(7,16,69,.1); color: #1e1d18; }
+.notes-today:has(> .calendar-event) + .note-row { border-top: 1px solid rgba(7, 16, 69, .1); }
+.calendar-event > svg { align-self: start; margin-top: 2px; color: #a66c35; }
+.calendar-event__check { cursor: default; }
+.calendar-event a { color: inherit; text-decoration: none; }
+@media (hover: hover) and (pointer: fine) { .calendar-event a:hover { text-decoration: underline; } }
+.calendar-event small { display: block; margin-top: 5px; color: rgba(30,29,24,.55); font-size: 12px; overflow-wrap: anywhere; }
+
+@media (pointer: coarse) {
+  input, textarea, select, [contenteditable="true"] { font-size: max(16px, 1em); }
 }
