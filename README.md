@@ -83,3 +83,7 @@ The Calendar configuration in `.env.local` is local to your computer. For a Verc
 6. Redeploy after changing Vercel environment variables, sign in to the production app, and verify Calendar loads. Google OAuth redirect URIs must match exactly; changing preview deployment URLs need their own configuration and must not send credentials to an untrusted origin.
 
 Google OAuth is currently in Testing mode: only listed test users can connect, and Calendar authorizations expire after seven days. Production hosting on Vercel does not change that Google setting. Calendar checks for updates while the page is visible; it does not use webhooks.
+
+### Note feeds
+
+Apply `supabase/migrations/20261113000000_add_note_feeds.sql` before deploying the All and Ideas feeds. Existing notes default to All.

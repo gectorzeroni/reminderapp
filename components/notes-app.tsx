@@ -23,7 +23,7 @@ import { parseStoredNote } from "@/lib/note";
 import { calendarEventEndTime, hasCalendarEventEnded, type CalendarEvent } from "@/lib/calendar-events";
 import { groupNotesByPeriod, localDateKey } from "@/lib/timeline";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
-import type { Reminder } from "@/lib/types";
+import type { NoteFeed, Reminder } from "@/lib/types";
 
 type CalendarAccount = { id: string; email: string };
 
@@ -102,11 +102,12 @@ function deleteToastId(noteId: string) {
   return `note-deleted:${noteId}`;
 }
 
-function createOptimisticNote(text: string): Reminder {
+function createOptimisticNote(text: string, feed: NoteFeed): Reminder {
   const timestamp = new Date().toISOString();
   return {
     id: `${OPTIMISTIC_NOTE_PREFIX}${crypto.randomUUID()}`,
     userId: "optimistic",
+    feed,
     note: text,
     pinned: false,
     checked: false,
@@ -133,7 +134,19 @@ function resizeNoteEditor(element: HTMLTextAreaElement) {
 export function NotesApp() {
   const router = useRouter();
   const [notes, setNotes] = useState<Reminder[]>([]);
-  const [draft, setDraft] = useState("");
+  const [activeFeed, setActiveFeed] = useState<NoteFeed>("all");
+  const [drafts, setDrafts] = useState<Record<NoteFeed, string>>({ all: "", ideas: "" });
+  const [feedMenuOpen, setFeedMenuOpen] = useState(false);
+  const draft = drafts[activeFeed];
+  function setDraft(value: string) { setDrafts((current) => ({ ...current, [activeFeed]: value })); }
+  function selectFeed(feed: NoteFeed) {
+    if (feed === activeFeed) return;
+    shouldScrollToLatestRef.current = true;
+    setActiveFeed(feed);
+    setContextMenu(null);
+    setEditingNoteId(null);
+    setError(null);
+  }
   const [todayKey, setTodayKey] = useState(() => localDateKey(new Date()));
   const [profileOpen, setProfileOpen] = useState(false);
   const [calendarOpen, setCalendarOpen] = useState(false);
@@ -161,8 +174,8 @@ export function NotesApp() {
 
   const timelineGroups = useMemo(() => {
     const [year, month, day] = todayKey.split("-").map(Number);
-    return groupNotesByPeriod(notes, new Date(year, month - 1, day));
-  }, [notes, todayKey]);
+    return groupNotesByPeriod(notes.filter((note) => (note.feed ?? "all") === activeFeed), new Date(year, month - 1, day));
+  }, [notes, todayKey, activeFeed]);
 
   useEffect(() => {
     let timer: number;
@@ -352,7 +365,7 @@ export function NotesApp() {
       window.requestAnimationFrame(syncActivePeriod);
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [loading, notes.length]);
+  }, [loading, notes.length, activeFeed]);
 
 
   useEffect(() => {
@@ -399,7 +412,8 @@ export function NotesApp() {
     const text = draft.trim();
     if (!text) return;
 
-    const optimisticNote = createOptimisticNote(text);
+    const feed = activeFeed;
+    const optimisticNote = createOptimisticNote(text, feed);
     shouldScrollToLatestRef.current = true;
     scrollBehaviorRef.current = "auto";
     setNotes((current) => [...current, optimisticNote]);
@@ -411,7 +425,7 @@ export function NotesApp() {
       const response = await fetch("/api/notes", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ text })
+        body: JSON.stringify({ text, feed })
       });
       const body = (await response.json()) as { note?: Reminder; error?: string };
       if (!response.ok || !body.note) throw new Error(body.error || "Could not save note");
@@ -425,7 +439,7 @@ export function NotesApp() {
       );
     } catch (saveError) {
       setNotes((current) => current.filter((note) => note.id !== optimisticNote.id));
-      setDraft((current) => current || text);
+      setDrafts((current) => ({ ...current, [feed]: current[feed] || text }));
       setError(saveError instanceof Error ? saveError.message : "Could not save note");
     }
   }
@@ -690,6 +704,18 @@ export function NotesApp() {
         <div className="notes-header__inner">
           <div className="notes-brand">
             <span className="notes-brand__wordmark">Later™</span>
+            <Popover.Root open={feedMenuOpen} onOpenChange={setFeedMenuOpen}>
+              <Popover.Trigger asChild>
+                <button type="button" className="feed-mobile-trigger" aria-label="Choose feed">
+                  {activeFeed === "all" ? "All" : "Ideas"}<ChevronDown size={16} aria-hidden="true" />
+                </button>
+              </Popover.Trigger>
+              <Popover.Portal>
+                <Popover.Content className="feed-popover" align="start" sideOffset={8} collisionPadding={16} aria-label="Choose feed">
+                  {(["all", "ideas"] as const).map((feed) => <button type="button" key={feed} className="feed-popover__item" aria-current={activeFeed === feed ? "page" : undefined} onClick={() => { selectFeed(feed); setFeedMenuOpen(false); }}>{feed === "all" ? "All" : "Ideas"}{activeFeed === feed ? <Check size={16} aria-hidden="true" /> : null}</button>)}
+                </Popover.Content>
+              </Popover.Portal>
+            </Popover.Root>
           </div>
           <Popover.Root open={profileOpen} onOpenChange={(open) => {
             setProfileOpen(open);
@@ -724,11 +750,14 @@ export function NotesApp() {
         </div>
       </header>
 
+      <nav className="feed-tabs" aria-label="Feeds">
+        {(["all", "ideas"] as const).map((feed) => <button type="button" key={feed} className={`feed-tab ${activeFeed === feed ? "is-active" : ""}`} aria-current={activeFeed === feed ? "page" : undefined} onClick={() => selectFeed(feed)}>{feed === "all" ? "All" : "Ideas"}</button>)}
+      </nav>
       <div className="notes-stage">
         <section
           ref={scrollRef}
           className="notes-scroll"
-          aria-label="Your notes"
+          aria-label={activeFeed === "all" ? "All notes" : "Ideas"}
           aria-busy={loading}
           onScroll={() => {
             cancelLongPress();
@@ -736,7 +765,13 @@ export function NotesApp() {
             setContextMenu(null);
           }}
         >
-          <div className="notes-list">
+          <motion.div
+            key={activeFeed}
+            className="notes-list"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.18, ease: [0.23, 1, 0.32, 1] }}
+          >
             <AnimatePresence initial={false} mode="popLayout">
               {loading ? (
                 <motion.div key="loading" layout="position" className="notes-state" role="status">
@@ -766,7 +801,7 @@ export function NotesApp() {
                       className="notes-week__items"
                       transition={{ type: "spring", duration: 0.3, bounce: 0 }}
                     >
-                      {group.key === "today" ? <TodayEvents events={calendarEvents} /> : null}
+                      {group.key === "today" ? <TodayEvents events={activeFeed === "all" ? calendarEvents : []} /> : null}
                       <AnimatePresence initial={false} mode="popLayout">
                         {group.notes.map((note, index) => {
                           const text = parseStoredNote(note.note).plainText;
@@ -797,6 +832,7 @@ export function NotesApp() {
                                   return;
                                 }
                                 if (event.button !== 0 || isSaving || isSavingEdit || isEditing) return;
+                                if (event.target instanceof Element && event.target.closest("a")) return;
                                 const checkbox = event.currentTarget.querySelector<HTMLButtonElement>(".note-check");
                                 if (checkbox) {
                                   if (checkbox.contains(event.target as Node)) return;
@@ -888,7 +924,7 @@ export function NotesApp() {
                 ))
               )}
             </AnimatePresence>
-          </div>
+          </motion.div>
         </section>
 
         {timelineGroups.length > 0 ? (

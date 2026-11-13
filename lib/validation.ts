@@ -22,6 +22,7 @@ const reminderAttachmentSchema = z.object({
 });
 
 export const createNoteSchema = z.object({
+  feed: z.enum(["all", "ideas"]).default("all"),
   text: z.string().trim().min(1, "Note cannot be empty").max(5000)
 });
 

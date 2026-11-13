@@ -29,13 +29,15 @@ function PageLink({ url }: { url: string }) {
     return () => { active = false; };
   }, [url]);
   const icon = preview?.previewIconUrl || getDomainFaviconUrl(url);
+  const title = preview?.previewTitle?.trim();
+  const isUrlFallback = !title || title === url;
   return (
-    <a className="note-page-link" href={url} target="_blank" rel="noopener noreferrer" title={url} onClick={(event) => event.stopPropagation()}>
+    <a className={`note-page-link ${isUrlFallback ? "link-preview--url" : ""}`} href={url} target="_blank" rel="noopener noreferrer" title={url} onClick={(event) => event.stopPropagation()}>
       {icon && !iconFailed ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={icon} alt="" width={20} height={20} onError={() => setIconFailed(true)} />
       ) : <span aria-hidden="true">↗</span>}
-      <span>{preview?.previewTitle || url}</span>
+      <span>{isUrlFallback ? url : title}</span>
     </a>
   );
 }

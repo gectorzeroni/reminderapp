@@ -30,6 +30,9 @@ export function NoteComposerInput({ value, onChange, onKeyDown, inputRef }: {
       void loadPreview(url).then((preview) => {
         if (!root.contains(token)) return;
         token.replaceChildren();
+        const title = preview.previewTitle?.trim();
+        const isUrlFallback = !title || title === url;
+        token.classList.toggle("link-preview--url", isUrlFallback);
         const iconUrl = preview.previewIconUrl || getDomainFaviconUrl(url);
         if (iconUrl) {
           const image = document.createElement("img");
@@ -39,7 +42,7 @@ export function NoteComposerInput({ value, onChange, onKeyDown, inputRef }: {
           image.onerror = () => image.remove();
           token.append(image);
         }
-        token.append(document.createTextNode(preview.previewTitle || url));
+        token.append(document.createTextNode(isUrlFallback ? url : title));
       });
     });
   }
@@ -51,7 +54,7 @@ export function NoteComposerInput({ value, onChange, onKeyDown, inputRef }: {
         const url = part.replace(/[.,;!?]+$/, "");
         const token = document.createElement("span");
         token.contentEditable = "false";
-        token.className = "composer-link-preview";
+        token.className = "composer-link-preview link-preview--url";
         token.dataset.url = url;
         token.title = url;
         token.textContent = url;
