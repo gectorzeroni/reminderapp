@@ -12,6 +12,12 @@ describe("updateNoteSchema", () => {
     expect(updateNoteSchema.parse({ checked: true })).toEqual({ checked: true });
   });
 
+  it("accepts valid feed changes and rejects unknown feeds", () => {
+    expect(updateNoteSchema.parse({ feed: "ideas" })).toEqual({ feed: "ideas" });
+    expect(updateNoteSchema.parse({ feed: "all" })).toEqual({ feed: "all" });
+    expect(updateNoteSchema.safeParse({ feed: "other" }).success).toBe(false);
+  });
+
   it("rejects empty notes and empty updates", () => {
     expect(updateNoteSchema.safeParse({ note: "   " }).success).toBe(false);
     expect(updateNoteSchema.safeParse({}).success).toBe(false);

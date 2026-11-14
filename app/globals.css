@@ -2780,6 +2780,13 @@ html {
   transition: background-color 150ms ease-out, scale 150ms ease-out;
 }
 
+.profile-trigger__avatar {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: inherit;
+}
 .profile-trigger[data-state="open"] { background: rgba(30, 29, 24, 0.14); }
 @media (hover: hover) and (pointer: fine) {
   .profile-trigger:hover { background: rgba(30, 29, 24, 0.14); }
@@ -3319,6 +3326,13 @@ html {
   transition-timing-function: ease-out;
 }
 
+ .note-context-menu button.note-context-menu__move { color: #1e1d18; }
+.note-context-menu button.note-context-menu__move:focus-visible { background: rgba(30, 29, 24, 0.08); }
+@media (hover: hover) and (pointer: fine) {
+  .note-context-menu button.note-context-menu__move:hover { background: rgba(30, 29, 24, 0.08); }
+}
+.note-context-menu button.note-context-menu__move:active { background: rgba(30, 29, 24, 0.12); }
+
 .note-context-menu button:focus-visible {
   background: rgba(179, 38, 46, 0.09);
   outline: none;
@@ -3592,11 +3606,12 @@ html {
   gap: 8px;
 }
 .feed-tab {
+  width: 82px;
   min-width: 82px;
   min-height: 38px;
   padding: 0 15px;
   border: 1.5px solid #edaa7f;
-  border-radius: 9px;
+  border-radius: 999px;
   background: #ffed8c;
   color: #1e1d18;
   font-size: 14px;
@@ -3606,6 +3621,8 @@ html {
   cursor: pointer;
 }
 .feed-tab.is-active { background: #edaa7f; }
+.feed-tab--draggable { touch-action: none; user-select: none; -webkit-user-select: none; }
+.feed-tab--draggable:active { cursor: grabbing; }
 .feed-tab:focus-visible, .feed-mobile-trigger:focus-visible, .feed-popover__item:focus-visible { outline: 2px solid #1e1d18; outline-offset: 2px; }
 @media (hover: hover) and (pointer: fine) {
   .feed-tab:hover, .feed-popover__item:hover { background: #f6c593; }
@@ -3661,3 +3678,29 @@ html {
 @media (prefers-reduced-motion: reduce) {
   .profile-popover { animation-name: panel-fade-in; }
 }
+
+.feed-tabs { max-width: 170px; }
+.feed-tabs--scrollable { max-height: calc(100dvh - 120px); overflow-y: auto; scrollbar-width: thin; }
+.feed-tabs .feed-tab { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-shrink: 0; }
+.feed-add-button {
+  display: grid; place-items: center; width: 82px; height: 38px; flex-shrink: 0;
+  border: 1.5px solid #edaa7f; border-radius: 999px; background: #ffed8c; color: #1e1d18; cursor: pointer;
+}
+.feed-add-button:focus-visible { outline: 2px solid #1e1d18; outline-offset: 2px; }
+.feed-add { justify-content: flex-start; gap: 8px; }
+.feed-popover { max-height: min(70dvh, 480px); overflow-y: auto; }
+.note-context-menu { max-height: calc(100dvh - 20px); overflow-y: auto; }
+.note-context-menu__move span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.feed-tab--input { cursor: text; outline: none; }
+.feed-tab--input:focus-visible, .feed-popover__input:focus-visible { outline: 2px solid #1e1d18; outline-offset: 2px; }
+.feed-popover__input { display: block; width: 100%; min-height: 44px; padding: 0 12px; border: 1px solid #edaa7f; border-radius: 9px; background: #fff8c9; color: #1e1d18; font-size: 16px; }
+.feed-inline-error { max-width: 160px; margin: 0; color: #b3262e; font-size: 12px; overflow-wrap: anywhere; }
+@media (hover: hover) and (pointer: fine) { .feed-add-button:hover { background: #f6c593; } }
+.feed-dialog-overlay { position: fixed; inset: 0; z-index: 40; background: rgba(30, 29, 24, .32); }
+.feed-dialog { position: fixed; z-index: 41; top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(360px, calc(100vw - 40px)); padding: 24px; border-radius: 18px; background: #fff9d8; color: #1e1d18; box-shadow: 0 18px 48px rgba(30, 29, 24, .18); }
+.feed-dialog__title { margin: 0; font-size: 20px; font-weight: 700; }
+.feed-dialog__description { margin: 8px 0 18px; font-size: 14px; color: rgba(30, 29, 24, .65); }
+.feed-dialog__actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+.feed-dialog__actions button { min-height: 40px; padding: 0 14px; border: 0; border-radius: 9px; background: rgba(30, 29, 24, .08); color: #1e1d18; font-size: 14px; font-weight: 650; cursor: pointer; }
+.feed-dialog__actions button.feed-dialog__delete { background: #b3262e; color: white; }
+.feed-dialog__actions button:disabled { opacity: .4; cursor: default; }

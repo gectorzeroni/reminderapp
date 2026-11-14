@@ -21,17 +21,21 @@ const reminderAttachmentSchema = z.object({
   metadataStatus: z.enum(["pending", "ready", "failed"]).optional()
 });
 
+const noteFeedSchema = z.union([z.enum(["all", "ideas"]), z.string().uuid()]);
+export const createFeedSchema = z.object({ name: z.string().trim().min(1).max(30) });
+
 export const createNoteSchema = z.object({
-  feed: z.enum(["all", "ideas"]).default("all"),
+  feed: noteFeedSchema.default("all"),
   text: z.string().trim().min(1, "Note cannot be empty").max(5000)
 });
 
 export const updateNoteSchema = z
   .object({
     note: z.string().trim().min(1, "Note cannot be empty").max(5000).optional(),
-    checked: z.boolean().optional()
+    checked: z.boolean().optional(),
+    feed: noteFeedSchema.optional()
   })
-  .refine((value) => value.note !== undefined || value.checked !== undefined, {
+  .refine((value) => value.note !== undefined || value.checked !== undefined || value.feed !== undefined, {
     message: "A note change is required"
   });
 

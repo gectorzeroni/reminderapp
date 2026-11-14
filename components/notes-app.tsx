@@ -1,10 +1,11 @@
 "use client";
 
-import { play } from "cuelume";
-import { AnimatePresence, motion } from "motion/react";
-import { ArrowUp, CalendarDays, Check, ChevronDown, LogOut, Trash2, UserRound } from "lucide-react";
+import { play, unlock } from "cuelume";
+import { animate, AnimatePresence, motion, motionValue, useMotionValue, useReducedMotion, type MotionValue } from "motion/react";
+import { ArrowRightLeft, ArrowUp, CalendarDays, Check, ChevronDown, LogOut, Pencil, Plus, Trash2 } from "lucide-react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { Popover } from "radix-ui";
+import { AlertDialog, Popover } from "radix-ui";
 import {
   type CSSProperties,
   type FormEvent,
@@ -24,6 +25,7 @@ import { calendarEventEndTime, hasCalendarEventEnded, type CalendarEvent } from 
 import { groupNotesByPeriod, localDateKey } from "@/lib/timeline";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import type { NoteFeed, Reminder } from "@/lib/types";
+import type { CustomFeed } from "@/lib/repositories/feeds";
 
 type CalendarAccount = { id: string; email: string };
 
@@ -133,11 +135,30 @@ function resizeNoteEditor(element: HTMLTextAreaElement) {
 
 export function NotesApp() {
   const router = useRouter();
+  const reduceMotion = useReducedMotion();
+  const ideasOffset = useMotionValue(0);
+  const allOffset = useMotionValue(0);
+  const customOffsetsRef = useRef(new Map<string, MotionValue<number>>());
+  const creatingFeedRef = useRef(false);
+  const cancelFeedRef = useRef(false);
+  const tabDragRef = useRef<{ pointerId: number; feed: NoteFeed; startY: number; startOffset: number; lastY: number; lastTime: number; velocity: number; dragged: boolean } | null>(null);
+  const suppressTabClickRef = useRef<NoteFeed | null>(null);
   const [notes, setNotes] = useState<Reminder[]>([]);
   const [activeFeed, setActiveFeed] = useState<NoteFeed>("all");
   const [drafts, setDrafts] = useState<Record<NoteFeed, string>>({ all: "", ideas: "" });
   const [feedMenuOpen, setFeedMenuOpen] = useState(false);
-  const draft = drafts[activeFeed];
+  const [customFeeds, setCustomFeeds] = useState<CustomFeed[]>([]);
+  const [createFeedOpen, setCreateFeedOpen] = useState(false);
+  const [editingFeedId, setEditingFeedId] = useState<string | null>(null);
+  const [feedContextMenu, setFeedContextMenu] = useState<{ id: string; x: number; y: number } | null>(null);
+  const [feedToDelete, setFeedToDelete] = useState<CustomFeed | null>(null);
+  const [deletingFeed, setDeletingFeed] = useState(false);
+  const [newFeedName, setNewFeedName] = useState("");
+  const [feedError, setFeedError] = useState<string | null>(null);
+  const [creatingFeed, setCreatingFeed] = useState(false);
+  const allFeeds = [{ id: "all", name: "All" }, { id: "ideas", name: "Ideas" }, ...customFeeds];
+  const activeFeedName = allFeeds.find((feed) => feed.id === activeFeed)?.name ?? "All";
+  const draft = drafts[activeFeed] ?? "";
   function setDraft(value: string) { setDrafts((current) => ({ ...current, [activeFeed]: value })); }
   function selectFeed(feed: NoteFeed) {
     if (feed === activeFeed) return;
@@ -164,6 +185,7 @@ export function NotesApp() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLDivElement>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
+  const feedContextMenuRef = useRef<HTMLDivElement>(null);
   const longPressRef = useRef<LongPressGesture | null>(null);
   const suppressLongPressClickRef = useRef<string | null>(null);
   const noteRenderKeysRef = useRef(new Map<string, string>());
@@ -172,10 +194,236 @@ export function NotesApp() {
   const scrollBehaviorRef = useRef<ScrollBehavior>("auto");
   const calendarShouldScrollRef = useRef(false);
 
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/feeds", { cache: "no-store" }).then(async (response) => {
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || "Could not load tabs");
+      if (!cancelled) setCustomFeeds(body.feeds);
+    }).catch((error) => { if (!cancelled) setError(error instanceof Error ? error.message : "Could not load tabs"); });
+    return () => { cancelled = true; };
+  }, []);
+
+  function beginCreateFeed() {
+    cancelFeedRef.current = false;
+    setNewFeedName("");
+    setFeedError(null);
+    setCreateFeedOpen(true);
+  }
+
+  async function saveNewFeed(value: string) {
+    if (cancelFeedRef.current || creatingFeedRef.current) return;
+    const name = value.trim();
+    if (!name) { setCreateFeedOpen(false); setFeedError(null); return; }
+    creatingFeedRef.current = true;
+    setCreatingFeed(true);
+    setFeedError(null);
+    try {
+      const response = await fetch("/api/feeds", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name }) });
+      const body = await response.json();
+      if (!response.ok || !body.feed) throw new Error(body.error || "Could not create tab");
+      setCustomFeeds((current) => [...current, body.feed]);
+      setNewFeedName("");
+      setCreateFeedOpen(false);
+    } catch (error) { setFeedError(error instanceof Error ? error.message : "Could not create tab"); }
+    finally { creatingFeedRef.current = false; setCreatingFeed(false); }
+  }
+
+  async function renameFeed(id: string, value: string) {
+    if (cancelFeedRef.current || creatingFeedRef.current) return;
+    const name = value.trim();
+    const existing = customFeeds.find((feed) => feed.id === id);
+    if (!existing) { setEditingFeedId(null); return; }
+    if (!name || name === existing.name) { setEditingFeedId(null); setFeedError(null); return; }
+    creatingFeedRef.current = true;
+    setCreatingFeed(true);
+    setFeedError(null);
+    try {
+      const response = await fetch(`/api/feeds/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ name }) });
+      const body = await response.json();
+      if (!response.ok || !body.feed) throw new Error(body.error || "Could not rename tab");
+      setCustomFeeds((current) => current.map((feed) => feed.id === id ? body.feed : feed));
+      setEditingFeedId(null);
+    } catch (error) { setFeedError(error instanceof Error ? error.message : "Could not rename tab"); }
+    finally { creatingFeedRef.current = false; setCreatingFeed(false); }
+  }
+
+  async function deleteFeed() {
+    if (!feedToDelete || deletingFeed) return;
+    const id = feedToDelete.id;
+    if (notes.some((note) => note.feed === id && (isOptimisticNote(note) || savingNoteIds.has(note.id) || checkingNoteIds.has(note.id)))) {
+      setError("Wait for notes to finish saving before deleting this tab.");
+      setFeedToDelete(null);
+      return;
+    }
+    setDeletingFeed(true);
+    try {
+      const response = await fetch(`/api/feeds/${id}`, { method: "DELETE" });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || "Could not delete tab");
+      setNotes((current) => current.map((note) => note.feed === id ? { ...note, feed: "all" } : note));
+      setCustomFeeds((current) => current.filter((feed) => feed.id !== id));
+      setDrafts((current) => {
+        if (!current[id]) return current;
+        return { ...current, all: current.all ? `${current.all}\n${current[id]}` : current[id], [id]: "" };
+      });
+      if (activeFeed === id) selectFeed("all");
+      setFeedToDelete(null);
+    } catch (error) { setError(error instanceof Error ? error.message : "Could not delete tab"); setFeedToDelete(null); }
+    finally { setDeletingFeed(false); }
+  }
+
+  useEffect(() => {
+    if (!feedContextMenu) return;
+    const frame = window.requestAnimationFrame(() => feedContextMenuRef.current?.querySelector<HTMLButtonElement>("button")?.focus());
+    function close(event: PointerEvent) { if (!feedContextMenuRef.current?.contains(event.target as Node)) setFeedContextMenu(null); }
+    function keydown(event: globalThis.KeyboardEvent) { if (event.key === "Escape") setFeedContextMenu(null); }
+    window.addEventListener("pointerdown", close);
+    window.addEventListener("keydown", keydown);
+    return () => { window.cancelAnimationFrame(frame); window.removeEventListener("pointerdown", close); window.removeEventListener("keydown", keydown); };
+  }, [feedContextMenu]);
+
+  function openFeedMenu(event: ReactMouseEvent<HTMLButtonElement>, id: string) {
+    if (id === "all" || id === "ideas") return;
+    event.preventDefault();
+    setFeedContextMenu({ id, x: Math.max(10, Math.min(event.clientX, window.innerWidth - 186)), y: Math.max(10, Math.min(event.clientY, window.innerHeight - 110)) });
+  }
+
+  function feedOffset(feed: NoteFeed) {
+    if (feed === "all") return allOffset;
+    if (feed === "ideas") return ideasOffset;
+    let offset = customOffsetsRef.current.get(feed);
+    if (!offset) { offset = motionValue(0); customOffsetsRef.current.set(feed, offset); }
+    return offset;
+  }
+
+  function tabNameInput(className: string, feedId?: string) {
+    return <input
+      className={className}
+      aria-label={feedId ? "Edit tab name" : "New tab name"}
+      aria-invalid={Boolean(feedError)}
+      value={newFeedName}
+      onChange={(event) => { setNewFeedName(event.target.value); setFeedError(null); }}
+      onBlur={(event) => { if (feedId) void renameFeed(feedId, event.currentTarget.value); else void saveNewFeed(event.currentTarget.value); }}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") { event.preventDefault(); event.currentTarget.blur(); }
+        if (event.key === "Escape") { event.preventDefault(); cancelFeedRef.current = true; setCreateFeedOpen(false); setEditingFeedId(null); setFeedError(null); }
+      }}
+      placeholder="Name"
+      maxLength={30}
+      disabled={creatingFeed}
+      autoFocus
+    />;
+  }
+
+  function startTabDrag(event: ReactPointerEvent<HTMLButtonElement>, feed: NoteFeed) {
+    if (reduceMotion || event.button !== 0 || !event.isPrimary || tabDragRef.current) return;
+    void unlock();
+    const stack = [...allFeeds, { id: "__add__", name: "Create tab" }];
+    const index = stack.findIndex((item) => item.id === feed);
+    const neighbor = stack[index === 0 ? 1 : index - 1];
+    if (!neighbor) return;
+    const draggedOffset = feedOffset(feed);
+    const otherOffset = feedOffset(neighbor.id);
+    draggedOffset.stop();
+    otherOffset.stop();
+    if (otherOffset.get() !== 0) animate(otherOffset, 0, { type: "spring", stiffness: 450, damping: 24 });
+    suppressTabClickRef.current = null;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    tabDragRef.current = {
+      feed, pointerId: event.pointerId, startY: event.clientY, startOffset: draggedOffset.get(),
+      lastY: event.clientY, lastTime: event.timeStamp, velocity: 0, dragged: false
+    };
+  }
+
+  function moveTabDrag(event: ReactPointerEvent<HTMLButtonElement>) {
+    const gesture = tabDragRef.current;
+    if (!gesture || gesture.pointerId !== event.pointerId) return;
+    const direction = gesture.feed === "all" ? -1 : 1;
+    const delta = (event.clientY - gesture.startY) * direction;
+    if (!gesture.dragged && delta <= 6) return;
+    gesture.dragged = true;
+    const distance = Math.max(0, gesture.startOffset * direction + delta);
+    const resistedOffset = distance <= 90 ? distance : 90 + (distance - 90) * 0.25;
+    const offset = gesture.feed === "all" ? Math.min(96, resistedOffset) : resistedOffset;
+    const elapsed = event.timeStamp - gesture.lastTime;
+    if (elapsed > 0) gesture.velocity = (event.clientY - gesture.lastY) / elapsed * 1000;
+    gesture.lastY = event.clientY;
+    gesture.lastTime = event.timeStamp;
+    feedOffset(gesture.feed).set(offset * direction);
+  }
+
+  function endTabDrag(event: ReactPointerEvent<HTMLButtonElement>, cancelled = false) {
+    const gesture = tabDragRef.current;
+    if (!gesture || gesture.pointerId !== event.pointerId) return;
+    tabDragRef.current = null;
+    if (!gesture.dragged) return;
+    suppressTabClickRef.current = cancelled ? null : gesture.feed;
+    const direction = gesture.feed === "all" ? -1 : 1;
+    const stack = [...allFeeds, { id: "__add__", name: "Create tab" }];
+    const index = stack.findIndex((item) => item.id === gesture.feed);
+    const neighbor = stack[index === 0 ? 1 : index - 1];
+    const draggedOffset = feedOffset(gesture.feed);
+    if (!neighbor) { animate(draggedOffset, 0, { type: "spring", stiffness: 480, damping: 24 }); return; }
+    const otherOffset = feedOffset(neighbor.id);
+    const releaseVelocity = event.timeStamp - gesture.lastTime < 100 ? gesture.velocity : 0;
+    if (cancelled || draggedOffset.get() * direction < 12) {
+      animate(draggedOffset, 0, { type: "spring", stiffness: 480, damping: 24, velocity: releaseVelocity });
+      return;
+    }
+    let collided = false;
+    function impact() {
+      if (collided) return;
+      collided = true;
+      // Transfer some of the incoming velocity to the other tab.
+      const speed = Math.max(0, Math.min(1600, -draggedOffset.getVelocity() * direction));
+      const impactVelocity = -direction * speed;
+      const soundStrength = Math.min(1, speed / 1000);
+      play("tap", {
+        theme: "mech",
+        emphasis: soundStrength >= 0.7 ? "strong" : "normal",
+        volume: 0.12 + soundStrength * 0.73
+      });
+      draggedOffset.stop();
+      draggedOffset.set(-8 * direction);
+      function propagate(targetIndex: number, velocity: number) {
+        if (targetIndex < 0 || targetIndex >= stack.length) return;
+        const target = feedOffset(stack[targetIndex].id);
+        const step = velocity < 0 ? -1 : 1;
+        const nextIndex = targetIndex + step;
+        const next = stack[nextIndex] ? feedOffset(stack[nextIndex].id) : null;
+        let transferred = false;
+        target.stop();
+        animate(target, 0, {
+          type: "spring", stiffness: 500, damping: 10, velocity,
+          onUpdate: (value) => {
+            if (transferred || !next || step * (value - next.get()) < 8) return;
+            const nextVelocity = target.getVelocity();
+            if (nextVelocity * step <= 0) return;
+            transferred = true;
+            target.stop();
+            target.set(next.get() + step * 8);
+            propagate(nextIndex, nextVelocity * 0.9);
+            animate(target, 0, { type: "spring", stiffness: 500, damping: 18, velocity: -nextVelocity * 0.2 });
+          }
+        });
+      }
+      propagate(index === 0 ? 1 : index - 1, impactVelocity * 0.95);
+      animate(draggedOffset, 0, { type: "spring", stiffness: 500, damping: 18, velocity: -impactVelocity * 0.3 });
+    }
+    animate(draggedOffset, -12 * direction, {
+      type: "spring", stiffness: 500, damping: 30, velocity: releaseVelocity,
+      onUpdate: (value) => { if (value * direction <= -8) impact(); },
+      onComplete: impact
+    });
+  }
+
   const timelineGroups = useMemo(() => {
     const [year, month, day] = todayKey.split("-").map(Number);
-    return groupNotesByPeriod(notes.filter((note) => (note.feed ?? "all") === activeFeed), new Date(year, month - 1, day));
-  }, [notes, todayKey, activeFeed]);
+    const feedNotes = notes.filter((note) => (note.feed ?? "all") === activeFeed);
+    if (feedNotes.length === 0 && (activeFeed !== "all" || calendarEvents.length === 0)) return [];
+    return groupNotesByPeriod(feedNotes, new Date(year, month - 1, day));
+  }, [notes, todayKey, activeFeed, calendarEvents.length]);
 
   useEffect(() => {
     let timer: number;
@@ -322,6 +570,7 @@ export function NotesApp() {
           const changedNote = payload.new as {
             id?: unknown;
             checked?: unknown;
+            feed?: unknown;
             note?: unknown;
             updated_at?: unknown;
           };
@@ -333,6 +582,9 @@ export function NotesApp() {
             current.map((note) => {
               if (note.id !== changedNote.id) return note;
               const nextNote = { ...note };
+              if (typeof changedNote.feed === "string") {
+                nextNote.feed = changedNote.feed;
+              }
               if (typeof changedNote.checked === "boolean") {
                 nextNote.checked = changedNote.checked;
               }
@@ -565,9 +817,36 @@ export function NotesApp() {
     }
   }
 
+  async function moveNote(note: Reminder, feed: NoteFeed) {
+    const previousFeed = note.feed ?? "all";
+    setContextMenu(null);
+    setError(null);
+    setSavingNoteIds((current) => new Set(current).add(note.id));
+    setNotes((current) => current.map((item) => item.id === note.id ? { ...item, feed } : item));
+    try {
+      const response = await fetch(`/api/notes/${note.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ feed })
+      });
+      const body = (await response.json()) as { note?: Reminder; error?: string };
+      if (!response.ok || !body.note) throw new Error(body.error || "Could not move note");
+    } catch (moveError) {
+      setNotes((current) => current.map((item) => item.id === note.id ? { ...item, feed: previousFeed } : item));
+      setError(moveError instanceof Error ? moveError.message : "Could not move note");
+    } finally {
+      setSavingNoteIds((current) => {
+        const next = new Set(current);
+        next.delete(note.id);
+        return next;
+      });
+    }
+  }
+
   function showNoteMenu(noteId: string, x: number, y: number) {
+    if (savingNoteIds.has(noteId) || checkingNoteIds.has(noteId)) return;
     const menuWidth = 176;
-    const menuHeight = 60;
+    const menuHeight = Math.min(window.innerHeight - 20, 12 + allFeeds.length * 44);
     const gutter = 10;
     setContextMenu({
       noteId,
@@ -704,15 +983,17 @@ export function NotesApp() {
         <div className="notes-header__inner">
           <div className="notes-brand">
             <span className="notes-brand__wordmark">Later™</span>
-            <Popover.Root open={feedMenuOpen} onOpenChange={setFeedMenuOpen}>
+            <Popover.Root open={feedMenuOpen} onOpenChange={(open) => { if (!open && createFeedOpen) void saveNewFeed(newFeedName); setFeedMenuOpen(open); }}>
               <Popover.Trigger asChild>
                 <button type="button" className="feed-mobile-trigger" aria-label="Choose feed">
-                  {activeFeed === "all" ? "All" : "Ideas"}<ChevronDown size={16} aria-hidden="true" />
+                  {activeFeedName}<ChevronDown size={16} aria-hidden="true" />
                 </button>
               </Popover.Trigger>
               <Popover.Portal>
                 <Popover.Content className="feed-popover" align="start" sideOffset={8} collisionPadding={16} aria-label="Choose feed">
-                  {(["all", "ideas"] as const).map((feed) => <button type="button" key={feed} className="feed-popover__item" aria-current={activeFeed === feed ? "page" : undefined} onClick={() => { selectFeed(feed); setFeedMenuOpen(false); }}>{feed === "all" ? "All" : "Ideas"}{activeFeed === feed ? <Check size={16} aria-hidden="true" /> : null}</button>)}
+                  {allFeeds.map((feed) => <button type="button" key={feed.id} className="feed-popover__item" aria-current={activeFeed === feed.id ? "page" : undefined} onClick={() => { selectFeed(feed.id); setFeedMenuOpen(false); }}>{feed.name}{activeFeed === feed.id ? <Check size={16} aria-hidden="true" /> : null}</button>)}
+                  {createFeedOpen ? tabNameInput("feed-popover__input") : <button type="button" className="feed-popover__item feed-add" onClick={beginCreateFeed}><Plus size={16} aria-hidden="true" /> New tab</button>}
+                  {feedError ? <p className="feed-inline-error" role="alert">{feedError}</p> : null}
                 </Popover.Content>
               </Popover.Portal>
             </Popover.Root>
@@ -723,7 +1004,7 @@ export function NotesApp() {
           }}>
             <Popover.Trigger asChild>
               <button type="button" className="profile-trigger" aria-label="Profile menu">
-                <UserRound size={19} strokeWidth={1.8} aria-hidden="true" />
+                <Image src="/default-avatar.png?v=2" alt="" width={40} height={40} className="profile-trigger__avatar" />
               </button>
             </Popover.Trigger>
             <Popover.Portal>
@@ -750,14 +1031,42 @@ export function NotesApp() {
         </div>
       </header>
 
-      <nav className="feed-tabs" aria-label="Feeds">
-        {(["all", "ideas"] as const).map((feed) => <button type="button" key={feed} className={`feed-tab ${activeFeed === feed ? "is-active" : ""}`} aria-current={activeFeed === feed ? "page" : undefined} onClick={() => selectFeed(feed)}>{feed === "all" ? "All" : "Ideas"}</button>)}
+      <nav className={`feed-tabs ${customFeeds.length > 7 ? "feed-tabs--scrollable" : ""}`} aria-label="Feeds">
+        {allFeeds.map((feed) => editingFeedId === feed.id ? <div key={feed.id}>{tabNameInput("feed-tab feed-tab--input", feed.id)}{feedError ? <span className="feed-inline-error" role="alert">{feedError}</span> : null}</div> : (
+          <motion.button
+            type="button"
+            key={feed.id}
+            title={feed.name}
+            className={`feed-tab ${activeFeed === feed.id ? "is-active" : ""} ${!reduceMotion ? "feed-tab--draggable" : ""}`}
+            aria-current={activeFeed === feed.id ? "page" : undefined}
+            style={{ y: feedOffset(feed.id) }}
+            onContextMenu={(event) => openFeedMenu(event, feed.id)}
+            onPointerDown={(event) => startTabDrag(event, feed.id)}
+            onPointerMove={moveTabDrag}
+            onPointerUp={(event) => endTabDrag(event)}
+            onPointerCancel={(event) => endTabDrag(event, true)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") suppressTabClickRef.current = null;
+              if ((event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) && feed.id !== "all" && feed.id !== "ideas") {
+                event.preventDefault(); const rect = event.currentTarget.getBoundingClientRect();
+                setFeedContextMenu({ id: feed.id, x: Math.min(rect.right, window.innerWidth - 186), y: Math.min(rect.top, window.innerHeight - 110) });
+              }
+            }}
+            onClick={() => {
+              if (feed.id === suppressTabClickRef.current) { suppressTabClickRef.current = null; return; }
+              selectFeed(feed.id);
+            }}
+          >{feed.name}</motion.button>
+        ))}
+        {createFeedOpen && !feedMenuOpen ? tabNameInput("feed-tab feed-tab--input") : null}
+        {feedError && !feedMenuOpen && !editingFeedId ? <span className="feed-inline-error" role="alert">{feedError}</span> : null}
+        {!createFeedOpen ? <motion.button type="button" className={`feed-add-button ${!reduceMotion ? "feed-tab--draggable" : ""}`} aria-label="Create tab" style={{ y: feedOffset("__add__") }} onPointerDown={(event) => startTabDrag(event, "__add__")} onPointerMove={moveTabDrag} onPointerUp={(event) => endTabDrag(event)} onPointerCancel={(event) => endTabDrag(event, true)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") suppressTabClickRef.current = null; }} onClick={() => { if (suppressTabClickRef.current === "__add__") { suppressTabClickRef.current = null; return; } beginCreateFeed(); }}><Plus size={18} aria-hidden="true" /></motion.button> : null}
       </nav>
       <div className="notes-stage">
         <section
           ref={scrollRef}
           className="notes-scroll"
-          aria-label={activeFeed === "all" ? "All notes" : "Ideas"}
+          aria-label={activeFeed === "all" ? "All notes" : activeFeedName}
           aria-busy={loading}
           onScroll={() => {
             cancelLongPress();
@@ -964,6 +1273,12 @@ export function NotesApp() {
             transition={{ type: "spring", duration: 0.22, bounce: 0 }}
             onContextMenu={(event) => event.preventDefault()}
           >
+            {allFeeds.filter((feed) => feed.id !== (notes.find((item) => item.id === contextMenu.noteId)?.feed ?? "all")).map((feed) => (
+              <button key={feed.id} type="button" role="menuitem" className="note-context-menu__move" onClick={() => {
+                const note = notes.find((item) => item.id === contextMenu.noteId);
+                if (note) void moveNote(note, feed.id);
+              }}><ArrowRightLeft size={16} strokeWidth={1.8} aria-hidden="true" /> <span>Move to {feed.name}</span></button>
+            ))}
             <button
               type="button"
               role="menuitem"
@@ -978,6 +1293,18 @@ export function NotesApp() {
           </motion.div>
         ) : null}
       </AnimatePresence>
+
+      {feedContextMenu ? <div ref={feedContextMenuRef} role="menu" aria-label="Tab actions" className="note-context-menu" style={{ left: feedContextMenu.x, top: feedContextMenu.y }} onContextMenu={(event) => event.preventDefault()}>
+        <button type="button" role="menuitem" className="note-context-menu__move" onClick={() => { const feed = customFeeds.find((item) => item.id === feedContextMenu.id); if (!feed) return; cancelFeedRef.current = false; setNewFeedName(feed.name); setFeedError(null); setEditingFeedId(feed.id); setFeedContextMenu(null); }}><Pencil size={16} aria-hidden="true" /> Rename tab</button>
+        <button type="button" role="menuitem" onClick={() => { setFeedToDelete(customFeeds.find((item) => item.id === feedContextMenu.id) ?? null); setFeedContextMenu(null); }}><Trash2 size={16} aria-hidden="true" /> Delete tab</button>
+      </div> : null}
+      <AlertDialog.Root open={Boolean(feedToDelete)} onOpenChange={(open) => { if (!open && !deletingFeed) setFeedToDelete(null); }}>
+        <AlertDialog.Portal><AlertDialog.Overlay className="feed-dialog-overlay" /><AlertDialog.Content className="feed-dialog">
+          <AlertDialog.Title className="feed-dialog__title">Delete {feedToDelete?.name}?</AlertDialog.Title>
+          <AlertDialog.Description className="feed-dialog__description">Notes in this tab will move to All.</AlertDialog.Description>
+          <div className="feed-dialog__actions"><AlertDialog.Cancel asChild><button type="button" disabled={deletingFeed}>Cancel</button></AlertDialog.Cancel><button type="button" className="feed-dialog__delete" disabled={deletingFeed} onClick={() => void deleteFeed()}>{deletingFeed ? "Deleting…" : "Delete tab"}</button></div>
+        </AlertDialog.Content></AlertDialog.Portal>
+      </AlertDialog.Root>
 
       <Toaster
         position="bottom-right"

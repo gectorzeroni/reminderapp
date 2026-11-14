@@ -31,7 +31,7 @@ export interface ReminderAttachment {
   createdAt: string;
 }
 
-export type NoteFeed = "all" | "ideas";
+export type NoteFeed = string;
 
 export interface Reminder {
   id: string;
@@ -77,6 +77,7 @@ export interface CreateReminderInput {
 }
 
 export interface UpdateReminderInput {
+  feed?: NoteFeed;
   remindAt?: string | null;
   note?: string | null;
   pinned?: boolean;
