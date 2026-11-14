@@ -2780,6 +2780,13 @@ html {
   transition: background-color 150ms ease-out, scale 150ms ease-out;
 }
 
+.profile-trigger__avatar {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: inherit;
+}
 .profile-trigger[data-state="open"] { background: rgba(30, 29, 24, 0.14); }
 @media (hover: hover) and (pointer: fine) {
   .profile-trigger:hover { background: rgba(30, 29, 24, 0.14); }

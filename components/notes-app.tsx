@@ -2,7 +2,8 @@
 
 import { play, unlock } from "cuelume";
 import { animate, AnimatePresence, motion, motionValue, useMotionValue, useReducedMotion, type MotionValue } from "motion/react";
-import { ArrowRightLeft, ArrowUp, CalendarDays, Check, ChevronDown, LogOut, Pencil, Plus, Trash2, UserRound } from "lucide-react";
+import { ArrowRightLeft, ArrowUp, CalendarDays, Check, ChevronDown, LogOut, Pencil, Plus, Trash2 } from "lucide-react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { AlertDialog, Popover } from "radix-ui";
 import {
@@ -1003,7 +1004,7 @@ export function NotesApp() {
           }}>
             <Popover.Trigger asChild>
               <button type="button" className="profile-trigger" aria-label="Profile menu">
-                <UserRound size={19} strokeWidth={1.8} aria-hidden="true" />
+                <Image src="/default-avatar.png" alt="" width={40} height={40} className="profile-trigger__avatar" />
               </button>
             </Popover.Trigger>
             <Popover.Portal>
