@@ -1004,7 +1004,7 @@ export function NotesApp() {
           }}>
             <Popover.Trigger asChild>
               <button type="button" className="profile-trigger" aria-label="Profile menu">
-                <Image src="/default-avatar.png" alt="" width={40} height={40} className="profile-trigger__avatar" />
+                <Image src="/default-avatar.png?v=2" alt="" width={40} height={40} className="profile-trigger__avatar" />
               </button>
             </Popover.Trigger>
             <Popover.Portal>
