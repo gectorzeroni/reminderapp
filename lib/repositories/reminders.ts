@@ -26,7 +26,7 @@ type StoreState = {
 type DbReminderRow = {
   id: string;
   user_id: string;
-  feed?: "all" | "ideas" | null;
+  feed?: string | null;
   note: string | null;
   pinned?: boolean | null;
   checked?: boolean | null;
@@ -205,7 +205,7 @@ function mapReminderRow(row: DbReminderRow): Reminder {
   return {
     id: row.id,
     userId: row.user_id,
-    feed: row.feed === "ideas" ? "ideas" : "all",
+    feed: row.feed ?? "all",
     note: row.note,
     pinned: Boolean(row.pinned),
     checked: Boolean(row.checked),
@@ -379,6 +379,7 @@ async function updateReminderLocal(userId: string, reminderId: string, input: Up
   if ("note" in input) reminder.note = input.note?.trim() || null;
   if ("pinned" in input) reminder.pinned = Boolean(input.pinned);
   if ("checked" in input) reminder.checked = Boolean(input.checked);
+  if (input.feed !== undefined) reminder.feed = input.feed;
   if (input.attachments?.length) {
     const nextAttachments = await enrichAttachmentsForCreate(reminderId, input.attachments, timestamp);
     reminder.attachments = reminder.attachments.concat(nextAttachments);
@@ -388,7 +389,7 @@ async function updateReminderLocal(userId: string, reminderId: string, input: Up
     reminder.attachments = reminder.attachments.filter((attachment) => !toRemove.has(attachment.id));
   }
   reminder.updatedAt = timestamp;
-  if (reminder.status === "archived") {
+  if (reminder.status === "archived" && !(input.feed !== undefined && Object.keys(input).length === 1)) {
     reminder.status = "upcoming";
     reminder.archiveReason = null;
     reminder.archivedAt = null;
@@ -503,7 +504,7 @@ async function createReminderSupabase(userId: string, input: CreateReminderInput
   const { error: reminderError } = await supabase.from("reminders").insert({
     id: reminderId,
     user_id: userId,
-    ...(input.feed === "ideas" ? { feed: "ideas" } : {}),
+    ...(input.feed && input.feed !== "all" ? { feed: input.feed } : {}),
     note: input.note?.trim() || null,
     pinned: false,
     checked: false,
@@ -636,6 +637,10 @@ async function updateReminderSupabase(userId: string, reminderId: string, input:
   }
   if ("checked" in input) {
     patch.checked = Boolean(input.checked);
+    shouldUpdateReminder = true;
+  }
+  if (input.feed !== undefined) {
+    patch.feed = input.feed;
     shouldUpdateReminder = true;
   }
 

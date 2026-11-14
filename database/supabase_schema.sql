@@ -32,11 +32,21 @@ create table if not exists public.profiles (
   updated_at timestamptz not null default now()
 );
 
+create table if not exists public.note_feeds (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  name text not null check (length(trim(name)) between 1 and 30),
+  created_at timestamptz not null default now()
+);
+create unique index if not exists note_feeds_user_name_unique on public.note_feeds (user_id, lower(trim(name)));
+alter table public.note_feeds enable row level security;
+revoke all on public.note_feeds from anon, authenticated;
+
 create table if not exists public.reminders (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references public.profiles(id) on delete cascade,
   note text,
-  feed text not null default 'all' check (feed in ('all', 'ideas')),
+  feed text not null default 'all' check (feed in ('all', 'ideas') or feed ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'),
   pinned boolean not null default false,
   checked boolean not null default false,
   status reminder_status not null default 'upcoming',
@@ -190,3 +200,16 @@ for delete using (
 -- for all to authenticated
 -- using (bucket_id = 'reminder-files' and (storage.foldername(name))[1] = auth.uid()::text)
 -- with check (bucket_id = 'reminder-files' and (storage.foldername(name))[1] = auth.uid()::text);
+-- Move notes before deleting a tab in the same transaction.
+create or replace function public.delete_note_feed(p_user_id uuid, p_feed_id uuid)
+returns boolean language plpgsql security invoker set search_path = '' as $$
+begin
+  perform 1 from public.note_feeds where id = p_feed_id and user_id = p_user_id for update;
+  if not found then return false; end if;
+  update public.reminders set feed = 'all' where user_id = p_user_id and feed = p_feed_id::text;
+  delete from public.note_feeds where id = p_feed_id and user_id = p_user_id;
+  return true;
+end;
+$$;
+revoke all on function public.delete_note_feed(uuid, uuid) from public, anon, authenticated;
+grant execute on function public.delete_note_feed(uuid, uuid) to service_role;

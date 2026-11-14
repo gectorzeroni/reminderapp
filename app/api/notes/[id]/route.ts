@@ -1,5 +1,6 @@
 import { getCurrentUserId } from "@/lib/auth";
-import { fromError, notFound, ok } from "@/lib/http";
+import { canUseFeed } from "@/lib/repositories/feeds";
+import { badRequest, fromError, notFound, ok } from "@/lib/http";
 import { deleteNote, updateReminder } from "@/lib/repositories/reminders";
 import { updateNoteSchema } from "@/lib/validation";
 
@@ -10,6 +11,7 @@ export async function PATCH(request: Request, context: Context) {
     const userId = await getCurrentUserId();
     const { id } = await context.params;
     const input = updateNoteSchema.parse(await request.json());
+    if (input.feed && !(await canUseFeed(userId, input.feed))) return badRequest("Tab not found");
     const note = await updateReminder(userId, id, input);
     if (!note) return notFound("Note not found");
     return ok({ note });
