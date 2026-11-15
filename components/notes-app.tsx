@@ -2,7 +2,7 @@
 
 import { play, unlock } from "cuelume";
 import { animate, AnimatePresence, motion, motionValue, useMotionValue, useReducedMotion, type MotionValue } from "motion/react";
-import { ArrowRightLeft, ArrowUp, CalendarDays, Check, ChevronDown, LogOut, Pencil, Plus, Trash2 } from "lucide-react";
+import { ArrowRightLeft, CalendarDays, Check, ChevronDown, LogOut, Pencil, Plus, Trash2 } from "lucide-react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { AlertDialog, Popover } from "radix-ui";
@@ -82,7 +82,7 @@ function TodayEvents({ events }: { events: CalendarEvent[] }) {
 
   return (
     <div className="notes-today">
-      <div className="notes-week__heading"><h2>Today · {dayFormatter.format(new Date())}</h2></div>
+      <div className="notes-week__heading"><h2 className="notes-today__label" aria-label={`Today, ${dayFormatter.format(new Date())}`}><span>Today</span><img src="/figma-date-separator.svg" alt="" aria-hidden="true" /><span>{dayFormatter.format(new Date())}</span></h2></div>
       {[...events].sort((a, b) => Number(b.allDay) - Number(a.allDay) || a.start.localeCompare(b.start)).map((event) => {
         const ended = hasCalendarEventEnded(event, now);
         return (
@@ -183,6 +183,7 @@ export function NotesApp() {
   const [editingNoteText, setEditingNoteText] = useState("");
   const [savingNoteIds, setSavingNoteIds] = useState<Set<string>>(() => new Set());
   const scrollRef = useRef<HTMLDivElement>(null);
+  const composerAreaRef = useRef<HTMLElement>(null);
   const textareaRef = useRef<HTMLDivElement>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
   const feedContextMenuRef = useRef<HTMLDivElement>(null);
@@ -193,6 +194,17 @@ export function NotesApp() {
   const shouldScrollToLatestRef = useRef(true);
   const scrollBehaviorRef = useRef<ScrollBehavior>("auto");
   const calendarShouldScrollRef = useRef(false);
+
+  useEffect(() => {
+    const footer = composerAreaRef.current;
+    const app = footer?.parentElement;
+    if (!footer || !app) return;
+    const updateHeight = () => app.style.setProperty("--composer-overlay-height", `${footer.offsetHeight}px`);
+    updateHeight();
+    const observer = new ResizeObserver(updateHeight);
+    observer.observe(footer);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -316,6 +328,8 @@ export function NotesApp() {
     />;
   }
 
+  const tabGap = 12;
+
   function startTabDrag(event: ReactPointerEvent<HTMLButtonElement>, feed: NoteFeed) {
     if (reduceMotion || event.button !== 0 || !event.isPrimary || tabDragRef.current) return;
     void unlock();
@@ -385,7 +399,7 @@ export function NotesApp() {
         volume: 0.12 + soundStrength * 0.73
       });
       draggedOffset.stop();
-      draggedOffset.set(-8 * direction);
+      draggedOffset.set(-tabGap * direction);
       function propagate(targetIndex: number, velocity: number) {
         if (targetIndex < 0 || targetIndex >= stack.length) return;
         const target = feedOffset(stack[targetIndex].id);
@@ -397,12 +411,12 @@ export function NotesApp() {
         animate(target, 0, {
           type: "spring", stiffness: 500, damping: 10, velocity,
           onUpdate: (value) => {
-            if (transferred || !next || step * (value - next.get()) < 8) return;
+            if (transferred || !next || step * (value - next.get()) < tabGap) return;
             const nextVelocity = target.getVelocity();
             if (nextVelocity * step <= 0) return;
             transferred = true;
             target.stop();
-            target.set(next.get() + step * 8);
+            target.set(next.get() + step * tabGap);
             propagate(nextIndex, nextVelocity * 0.9);
             animate(target, 0, { type: "spring", stiffness: 500, damping: 18, velocity: -nextVelocity * 0.2 });
           }
@@ -411,9 +425,9 @@ export function NotesApp() {
       propagate(index === 0 ? 1 : index - 1, impactVelocity * 0.95);
       animate(draggedOffset, 0, { type: "spring", stiffness: 500, damping: 18, velocity: -impactVelocity * 0.3 });
     }
-    animate(draggedOffset, -12 * direction, {
+    animate(draggedOffset, -(tabGap + 4) * direction, {
       type: "spring", stiffness: 500, damping: 30, velocity: releaseVelocity,
-      onUpdate: (value) => { if (value * direction <= -8) impact(); },
+      onUpdate: (value) => { if (value * direction <= -tabGap) impact(); },
       onComplete: impact
     });
   }
@@ -1060,7 +1074,7 @@ export function NotesApp() {
         ))}
         {createFeedOpen && !feedMenuOpen ? tabNameInput("feed-tab feed-tab--input") : null}
         {feedError && !feedMenuOpen && !editingFeedId ? <span className="feed-inline-error" role="alert">{feedError}</span> : null}
-        {!createFeedOpen ? <motion.button type="button" className={`feed-add-button ${!reduceMotion ? "feed-tab--draggable" : ""}`} aria-label="Create tab" style={{ y: feedOffset("__add__") }} onPointerDown={(event) => startTabDrag(event, "__add__")} onPointerMove={moveTabDrag} onPointerUp={(event) => endTabDrag(event)} onPointerCancel={(event) => endTabDrag(event, true)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") suppressTabClickRef.current = null; }} onClick={() => { if (suppressTabClickRef.current === "__add__") { suppressTabClickRef.current = null; return; } beginCreateFeed(); }}><Plus size={18} aria-hidden="true" /></motion.button> : null}
+        {!createFeedOpen ? <motion.button type="button" className={`feed-add-button ${!reduceMotion ? "feed-tab--draggable" : ""}`} aria-label="Create tab" style={{ y: feedOffset("__add__") }} onPointerDown={(event) => startTabDrag(event, "__add__")} onPointerMove={moveTabDrag} onPointerUp={(event) => endTabDrag(event)} onPointerCancel={(event) => endTabDrag(event, true)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") suppressTabClickRef.current = null; }} onClick={() => { if (suppressTabClickRef.current === "__add__") { suppressTabClickRef.current = null; return; } beginCreateFeed(); }}><span aria-hidden="true">+</span></motion.button> : null}
       </nav>
       <div className="notes-stage">
         <section
@@ -1119,9 +1133,7 @@ export function NotesApp() {
                           const isSavingEdit = savingNoteIds.has(note.id);
                           const isChecked = note.checked;
                           const isChecking = checkingNoteIds.has(note.id);
-                          const dateKey = localDateKey(new Date(note.createdAt));
-                          const nextKey = index + 1 < group.notes.length ? localDateKey(new Date(group.notes[index + 1].createdAt)) : null;
-                          const isLastOfDay = dateKey !== nextKey;
+                          const isLastInGroup = index === group.notes.length - 1;
                           return (
                             <motion.article
                               key={noteRenderKeysRef.current.get(note.id) ?? note.id}
@@ -1129,7 +1141,7 @@ export function NotesApp() {
                               animate={{ opacity: 1, y: 0 }}
                               exit={{ opacity: 0, y: -8, transition: { duration: 0.14, ease: "easeIn" } }}
                               transition={{ type: "spring", duration: 0.3, bounce: 0 }}
-                              className={`note-row ${isLastOfDay ? "is-last-of-day" : ""} ${isEditing ? "is-editing" : ""} ${contextMenu?.noteId === note.id ? "has-open-menu" : ""}`}
+                              className={`note-row ${isLastInGroup ? "is-last-in-group" : ""} ${isEditing ? "is-editing" : ""} ${contextMenu?.noteId === note.id ? "has-open-menu" : ""}`}
                               tabIndex={isSaving || isEditing ? -1 : 0}
                               aria-label={isSaving || isSavingEdit ? "Saving note" : undefined}
                               aria-busy={isSaving || isSavingEdit}
@@ -1322,7 +1334,7 @@ export function NotesApp() {
         style={{ "--width": "244px" } as CSSProperties}
       />
 
-      <footer className="notes-composer-area">
+      <footer ref={composerAreaRef} className="notes-composer-area">
         <form className="notes-composer" onSubmit={createNote}>
           <NoteComposerInput
             inputRef={textareaRef}
@@ -1330,14 +1342,24 @@ export function NotesApp() {
             onChange={setDraft}
             onKeyDown={handleComposerKeyDown}
           />
-          <button
-            type="submit"
-            className="notes-send"
-            disabled={!draft.trim()}
-            aria-label="Add note"
-          >
-            <ArrowUp size={18} strokeWidth={2.2} aria-hidden="true" />
-          </button>
+          <span className="notes-send-slot">
+            <AnimatePresence initial={false}>
+              {draft.trim() ? (
+                <motion.button
+                  key="send"
+                  type="submit"
+                  className="notes-send"
+                  aria-label="Add note"
+                  initial={{ opacity: 0, transform: reduceMotion ? "none" : "scale(0.95)" }}
+                  animate={{ opacity: 1, transform: "scale(1)" }}
+                  exit={{ opacity: 0, transform: reduceMotion ? "none" : "scale(0.95)" }}
+                  transition={{ duration: 0.15, ease: [0.23, 1, 0.32, 1] }}
+                >
+                  <Image src="/figma-arrow-up.svg" alt="" width={24} height={24} />
+                </motion.button>
+              ) : null}
+            </AnimatePresence>
+          </span>
         </form>
         {error ? (
           <div className="notes-composer__meta">
