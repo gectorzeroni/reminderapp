@@ -2,7 +2,7 @@
 
 import { play, unlock } from "cuelume";
 import { animate, AnimatePresence, motion, motionValue, useMotionValue, useReducedMotion, type MotionValue } from "motion/react";
-import { ArrowRightLeft, CalendarDays, Check, ChevronDown, LogOut, Pencil, Plus, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowRightLeft, CalendarDays, Check, ChevronDown, LogOut, Pencil, Plus, Search, Trash2, X } from "lucide-react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { AlertDialog, Popover } from "radix-ui";
@@ -23,6 +23,7 @@ import { NoteLinkText } from "@/components/note-link-text";
 import { parseStoredNote } from "@/lib/note";
 import { calendarEventEndTime, hasCalendarEventEnded, type CalendarEvent } from "@/lib/calendar-events";
 import { groupNotesByPeriod, localDateKey } from "@/lib/timeline";
+import { noteMatchesSearch, searchTerms } from "@/lib/note-search";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import type { NoteFeed, Reminder } from "@/lib/types";
 import type { CustomFeed } from "@/lib/repositories/feeds";
@@ -176,7 +177,21 @@ export function NotesApp() {
   const [calendarError, setCalendarError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activePeriod, setActivePeriod] = useState<string | null>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const searchTriggerRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (searchOpen) searchInputRef.current?.focus();
+  }, [searchOpen]);
+  function closeSearch() {
+    setSearchQuery("");
+    setSearchOpen(false);
+    searchTriggerRef.current?.focus();
+  }
+  const searching = searchQuery.trim().length > 0;
+  const highlightTerms = searchTerms(searchQuery);
   const [contextMenu, setContextMenu] = useState<NoteContextMenu | null>(null);
   const [checkingNoteIds, setCheckingNoteIds] = useState<Set<string>>(() => new Set());
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
@@ -434,10 +449,21 @@ export function NotesApp() {
 
   const timelineGroups = useMemo(() => {
     const [year, month, day] = todayKey.split("-").map(Number);
-    const feedNotes = notes.filter((note) => (note.feed ?? "all") === activeFeed);
-    if (feedNotes.length === 0 && (activeFeed !== "all" || calendarEvents.length === 0)) return [];
-    return groupNotesByPeriod(feedNotes, new Date(year, month - 1, day));
-  }, [notes, todayKey, activeFeed, calendarEvents.length]);
+    const feedNotes = searching ? notes.filter((note) => noteMatchesSearch(note, searchQuery)) : notes.filter((note) => (note.feed ?? "all") === activeFeed);
+    return groupNotesByPeriod(feedNotes, new Date(year, month - 1, day), !searching && activeFeed === "all" && calendarEvents.length > 0);
+  }, [notes, todayKey, activeFeed, calendarEvents.length, searching, searchQuery]);
+
+  useEffect(() => {
+    const scroller = scrollRef.current;
+    if (!scroller) return;
+    const update = () => setShowScrollToBottom(scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight > 100);
+    const frame = window.requestAnimationFrame(update);
+    const observer = new ResizeObserver(update);
+    observer.observe(scroller);
+    const list = scroller.firstElementChild;
+    if (list) observer.observe(list);
+    return () => { window.cancelAnimationFrame(frame); observer.disconnect(); };
+  }, [timelineGroups, loading]);
 
   useEffect(() => {
     let timer: number;
@@ -527,26 +553,6 @@ export function NotesApp() {
     await loadCalendar();
   }
 
-  function syncActivePeriod() {
-    const scroller = scrollRef.current;
-    if (!scroller || timelineGroups.length === 0) return;
-
-    const scrollerRect = scroller.getBoundingClientRect();
-    const marker = scrollerRect.top + Math.min(160, scrollerRect.height * 0.32);
-    let next = timelineGroups[0]?.key ?? null;
-
-    for (const group of timelineGroups) {
-      const section = document.getElementById(`period-${group.key}`);
-      if (section && section.getBoundingClientRect().top <= marker) next = group.key;
-    }
-
-    if (scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 8) {
-      next = timelineGroups.at(-1)?.key ?? next;
-    }
-
-    setActivePeriod((current) => (current === next ? current : next));
-  }
-
   useEffect(() => {
     let cancelled = false;
 
@@ -628,7 +634,6 @@ export function NotesApp() {
       scroller.scrollTo({ top: scroller.scrollHeight, behavior: scrollBehaviorRef.current });
       shouldScrollToLatestRef.current = false;
       scrollBehaviorRef.current = "auto";
-      window.requestAnimationFrame(syncActivePeriod);
     });
     return () => window.cancelAnimationFrame(frame);
   }, [loading, notes.length, activeFeed]);
@@ -775,18 +780,6 @@ export function NotesApp() {
         return next;
       });
     }
-  }
-
-  function jumpToPeriod(key: string) {
-    const scroller = scrollRef.current;
-    const section = document.getElementById(`period-${key}`);
-    if (!scroller || !section) return;
-    setActivePeriod(key);
-    const top = scroller.scrollTop + section.getBoundingClientRect().top - scroller.getBoundingClientRect().top - 28;
-    scroller.scrollTo({
-      top,
-      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth"
-    });
   }
 
   async function toggleNoteChecked(note: Reminder) {
@@ -1005,13 +998,20 @@ export function NotesApp() {
               </Popover.Trigger>
               <Popover.Portal>
                 <Popover.Content className="feed-popover" align="start" sideOffset={8} collisionPadding={16} aria-label="Choose feed">
-                  {allFeeds.map((feed) => <button type="button" key={feed.id} className="feed-popover__item" aria-current={activeFeed === feed.id ? "page" : undefined} onClick={() => { selectFeed(feed.id); setFeedMenuOpen(false); }}>{feed.name}{activeFeed === feed.id ? <Check size={16} aria-hidden="true" /> : null}</button>)}
+                  {allFeeds.map((feed) => <button type="button" key={feed.id} className="feed-popover__item" aria-current={activeFeed === feed.id ? "page" : undefined} onClick={() => { play("select", { theme: "mech", emphasis: "subtle", volume: 0.4 }); selectFeed(feed.id); setFeedMenuOpen(false); }}>{feed.name}{activeFeed === feed.id ? <Check size={16} aria-hidden="true" /> : null}</button>)}
                   {createFeedOpen ? tabNameInput("feed-popover__input") : <button type="button" className="feed-popover__item feed-add" onClick={beginCreateFeed}><Plus size={16} aria-hidden="true" /> New tab</button>}
                   {feedError ? <p className="feed-inline-error" role="alert">{feedError}</p> : null}
                 </Popover.Content>
               </Popover.Portal>
             </Popover.Root>
           </div>
+          <div className="notes-header__actions">
+            <div className={`notes-search ${searchOpen ? "is-open" : ""}`} role="search">
+              <div className="notes-search__surface" aria-hidden="true" />
+              <button ref={searchTriggerRef} type="button" className="notes-search-trigger" aria-label="Search notes" aria-expanded={searchOpen} aria-controls="notes-search-input" onClick={() => { setSearchOpen(true); searchInputRef.current?.focus(); }}><Search size={16} aria-hidden="true" /></button>
+              <input ref={searchInputRef} id="notes-search-input" type="search" aria-label="Search notes" placeholder="Search notes or date" disabled={!searchOpen} value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") closeSearch(); }} />
+              <button type="button" className="notes-search__close" aria-label="Close search" tabIndex={searchOpen ? 0 : -1} disabled={!searchOpen} onClick={closeSearch}><X size={16} aria-hidden="true" /></button>
+            </div>
           <Popover.Root open={profileOpen} onOpenChange={(open) => {
             setProfileOpen(open);
             if (!open) setCalendarOpen(false);
@@ -1042,6 +1042,7 @@ export function NotesApp() {
               </Popover.Content>
             </Popover.Portal>
           </Popover.Root>
+          </div>
         </div>
       </header>
 
@@ -1068,6 +1069,7 @@ export function NotesApp() {
             }}
             onClick={() => {
               if (feed.id === suppressTabClickRef.current) { suppressTabClickRef.current = null; return; }
+              play("select", { theme: "mech", emphasis: "subtle", volume: 0.4 });
               selectFeed(feed.id);
             }}
           >{feed.name}</motion.button>
@@ -1084,8 +1086,9 @@ export function NotesApp() {
           aria-busy={loading}
           onScroll={() => {
             cancelLongPress();
-            syncActivePeriod();
             setContextMenu(null);
+            const scroller = scrollRef.current;
+            if (scroller) setShowScrollToBottom(scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight > 100);
           }}
         >
           <motion.div
@@ -1101,6 +1104,8 @@ export function NotesApp() {
                   <span className="notes-state__pulse" aria-hidden="true" />
                   Loading notes
                 </motion.div>
+              ) : searching && timelineGroups.length === 0 ? (
+                <motion.div key="no-results" className="notes-state notes-state--empty" role="status"><p>No notes found</p><span>Try a different keyword or date.</span></motion.div>
               ) : (
                 timelineGroups.map((group) => (
                   <motion.section
@@ -1124,7 +1129,7 @@ export function NotesApp() {
                       className="notes-week__items"
                       transition={{ type: "spring", duration: 0.3, bounce: 0 }}
                     >
-                      {group.key === "today" ? <TodayEvents events={activeFeed === "all" ? calendarEvents : []} /> : null}
+                      {group.key === "today" ? <TodayEvents events={!searching && activeFeed === "all" ? calendarEvents : []} /> : null}
                       <AnimatePresence initial={false} mode="popLayout">
                         {group.notes.map((note, index) => {
                           const text = parseStoredNote(note.note).plainText;
@@ -1202,7 +1207,8 @@ export function NotesApp() {
                                 />
                               ) : (
                                 <div className="note-row__text">
-                                  <NoteLinkText text={text} disabled={isSaving || isSavingEdit} onEdit={() => beginEditingNote(note)} />
+                                  <NoteLinkText text={text} disabled={isSaving || isSavingEdit} searchTerms={searching ? highlightTerms : []} onEdit={() => beginEditingNote(note)} />
+                                  {searching ? <span className="note-search-feed">{allFeeds.find((feed) => feed.id === (note.feed ?? "all"))?.name ?? "All"}</span> : null}
                                 </div>
                               )}
                               <button
@@ -1247,27 +1253,10 @@ export function NotesApp() {
             </AnimatePresence>
           </motion.div>
         </section>
-
-        {timelineGroups.length > 0 ? (
-          <nav className="timeline-rail" aria-label="Jump to date group">
-            <div className="timeline-rail__ticks">
-              {timelineGroups.map((group) => (
-                <button
-                  key={group.key}
-                  type="button"
-                  className={`timeline-tick ${activePeriod === group.key ? "is-active" : ""}`}
-                  aria-label={`Jump to ${group.label}`}
-                  aria-current={activePeriod === group.key ? "date" : undefined}
-                  onClick={() => jumpToPeriod(group.key)}
-                >
-                  <span className="timeline-tick__mark" aria-hidden="true" />
-                  <span className="timeline-tick__label" aria-hidden="true">
-                    <strong>{group.label}</strong>
-                  </span>
-                </button>
-              ))}
-            </div>
-          </nav>
+        {showScrollToBottom ? (
+          <button type="button" className="notes-scroll-bottom" aria-label="Scroll to newest notes" onClick={() => scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: reduceMotion ? "auto" : "smooth" })}>
+            <ArrowDown size={16} aria-hidden="true" />
+          </button>
         ) : null}
       </div>
 

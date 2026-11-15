@@ -13,7 +13,7 @@ export function localDateKey(date: Date) {
   return `${year}-${month}-${day}`;
 }
 
-export function groupNotesByPeriod(notes: Reminder[], now: Date): TimelineGroup[] {
+export function groupNotesByPeriod(notes: Reminder[], now: Date, includeToday = false): TimelineGroup[] {
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const threeDaysAgo = new Date(today);
   threeDaysAgo.setDate(today.getDate() - 3);
@@ -43,7 +43,7 @@ export function groupNotesByPeriod(notes: Reminder[], now: Date): TimelineGroup[
     else groups.set(key, { key, label, notes: [note] });
   }
 
-  if (!groups.has("today")) groups.set("today", { key: "today", label: "Today", notes: [] });
+  if (includeToday && !groups.has("today")) groups.set("today", { key: "today", label: "Today", notes: [] });
   const months = [...groups.values()].filter((group) => group.key.startsWith("month-")).sort((a, b) => a.key.localeCompare(b.key));
   return [...months, ...["last-14-days", "last-3-days", "today"].flatMap((key) => groups.has(key) ? [groups.get(key)!] : [])];
 }
