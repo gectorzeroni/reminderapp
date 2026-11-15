@@ -18,11 +18,18 @@ describe("timeline date groups", () => {
     ]);
   });
 
-  it("uses local calendar boundaries across the new year and always includes today", () => {
+  it("uses local calendar boundaries across the new year without an empty today", () => {
     const notes = [note("old", 2025, 12, 15), note("december", 2025, 12, 28), note("january", 2026, 1, 2)];
     const groups = groupNotesByPeriod(notes, new Date(2026, 0, 3));
     expect(groups.map(({ label, notes: items }) => [label, items.map(({ id }) => id)])).toEqual([
-      ["December 2025", ["old"]], ["14 days ago", ["december"]], ["3 days ago", ["january"]], ["Today", []]
+      ["December 2025", ["old"]], ["14 days ago", ["december"]], ["3 days ago", ["january"]]
     ]);
+  });
+
+  it("includes today when calendar events need a place in the feed", () => {
+    expect(groupNotesByPeriod([], new Date(2026, 0, 3), true)).toEqual([
+      { key: "today", label: "Today", notes: [] }
+    ]);
+    expect(groupNotesByPeriod([], new Date(2026, 0, 3))).toEqual([]);
   });
 });

@@ -20,7 +20,15 @@ export function loadPreview(url: string) {
   return pending;
 }
 
-function PageLink({ url }: { url: string }) {
+function HighlightedText({ text, terms }: { text: string; terms: string[] }) {
+  if (!terms.length) return text;
+  const escaped = [...terms].sort((a, b) => b.length - a.length).map((term) => term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  const pattern = new RegExp(`(${escaped.join("|")})`, "gi");
+  const matches = new Set(terms.map((term) => term.toLowerCase()));
+  return text.split(pattern).map((part, index) => matches.has(part.toLowerCase()) ? <mark className="note-search-match" key={index}>{part}</mark> : part);
+}
+
+function PageLink({ url, terms }: { url: string; terms: string[] }) {
   const [preview, setPreview] = useState<Preview | null>(null);
   const [iconFailed, setIconFailed] = useState(false);
   useEffect(() => {
@@ -37,22 +45,22 @@ function PageLink({ url }: { url: string }) {
         // eslint-disable-next-line @next/next/no-img-element
         <img src={icon} alt="" width={20} height={20} onError={() => setIconFailed(true)} />
       ) : <span aria-hidden="true">↗</span>}
-      <span>{isUrlFallback ? url : title}</span>
+      <span><HighlightedText text={terms.some((term) => url.toLowerCase().includes(term)) ? url : (isUrlFallback ? url : title)} terms={terms} /></span>
     </a>
   );
 }
 
-export function NoteLinkText({ text, onEdit, disabled }: { text: string; onEdit: () => void; disabled: boolean }) {
+export function NoteLinkText({ text, onEdit, disabled, searchTerms = [] }: { text: string; onEdit: () => void; disabled: boolean; searchTerms?: string[] }) {
   return text.split(/(https?:\/\/[^\s<>"']+)/gi).map((part, index) => {
     if (!part) return null;
     if (/^https?:\/\//i.test(part)) {
       const url = part.replace(/[.,;!?]+$/, "");
-      return <span key={`${index}-${part}`}><PageLink url={url} />{part.slice(url.length)}</span>;
+      return <span key={`${index}-${part}`}><PageLink url={url} terms={searchTerms} />{part.slice(url.length)}</span>;
     }
     return <span key={index}>{part.split("\n").map((line, lineIndex) => (
       <span key={lineIndex}>
         {lineIndex > 0 ? <br /> : null}
-        {line ? <button type="button" className="note-text-fragment" disabled={disabled} onClick={onEdit} aria-label={`Edit note: ${text}`}>{line}</button> : null}
+        {line ? <button type="button" className="note-text-fragment" disabled={disabled} onClick={onEdit} aria-label={`Edit note: ${text}`}><HighlightedText text={line} terms={searchTerms} /></button> : null}
       </span>
     ))}</span>;
   });
