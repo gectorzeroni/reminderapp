@@ -1,6 +1,7 @@
 "use client";
 
 import { play, unlock } from "cuelume";
+import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, closestCenter, pointerWithin, rectIntersection, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
 import { animate, AnimatePresence, motion, motionValue, useMotionValue, useReducedMotion, type MotionValue } from "motion/react";
 import { ArrowDown, ArrowRightLeft, CalendarDays, Check, ChevronDown, LogOut, Pencil, Plus, Search, Star, Trash2, X } from "lucide-react";
 import Image from "next/image";
@@ -19,11 +20,13 @@ import {
 } from "react";
 import { Toaster, toast } from "sonner";
 import { NoteComposerInput } from "@/components/note-composer-input";
+import { NoteDragHandle, NoteDropRow, NoteDropTarget, TopThreeDropRow, type NoteDragData } from "@/components/note-drag";
 import { NoteLinkText } from "@/components/note-link-text";
 import { parseStoredNote } from "@/lib/note";
 import { calendarEventEndTime, hasCalendarEventEnded, type CalendarEvent } from "@/lib/calendar-events";
 import { groupNotesByPeriod, localDateKey } from "@/lib/timeline";
 import { noteMatchesSearch, searchTerms } from "@/lib/note-search";
+import { reorderGroup } from "@/lib/note-order";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import type { NoteFeed, Reminder } from "@/lib/types";
 import type { CustomFeed } from "@/lib/repositories/feeds";
@@ -88,7 +91,7 @@ function TodayEvents({ events }: { events: CalendarEvent[] }) {
         const ended = hasCalendarEventEnded(event, now);
         return (
           <div className="calendar-event" key={event.id}>
-            <CalendarDays size={17} aria-hidden="true" />
+            <span className="calendar-event__icon" aria-hidden="true"><span className="note-check__circle"><CalendarDays size={14} /></span></span>
             <div>{event.url ? <a href={event.url} target="_blank" rel="noreferrer">{event.title}</a> : <span>{event.title}</span>}<small>{event.allDay ? "All day" : new Date(event.start).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} · {event.account}</small></div>
             {ended ? <span className="note-check is-checked calendar-event__check" role="img" aria-label="Event ended"><span className="note-check__circle"><Check size={16} strokeWidth={2.4} aria-hidden="true" /></span></span> : null}
           </div>
@@ -149,6 +152,9 @@ export function NotesApp() {
   const [topThreeError, setTopThreeError] = useState<string | null>(null);
   const [topThreeSaving, setTopThreeSaving] = useState(false);
   const [topThreeOpen, setTopThreeOpen] = useState(false);
+  const [draggingNote, setDraggingNote] = useState<NoteDragData | null>(null);
+  const [reorderSaving, setReorderSaving] = useState(false);
+  const dragSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }), useSensor(KeyboardSensor));
   const [activeFeed, setActiveFeed] = useState<NoteFeed>("all");
   const [drafts, setDrafts] = useState<Record<NoteFeed, string>>({ all: "", ideas: "" });
   const [feedMenuOpen, setFeedMenuOpen] = useState(false);
@@ -286,11 +292,12 @@ export function NotesApp() {
     const topNotes = topThreeIds.map((id) => notes.find((note) => note.id === id)).filter((note): note is Reminder => Boolean(note));
     return <div className="top-three__content">
       <div className="top-three__heading"><h2>Top 3</h2><span className="sr-only">{topThreeIds.length} of 3 notes</span></div>
-      {topThreeError ? <p className="top-three__empty" role="status">{topThreeError}</p> : topNotes.length === 0 ? <p className="top-three__empty">Add important notes from the note menu.</p> : <ol className="top-three__list">{topNotes.map((note) => <li key={note.id}>
+      {topThreeError ? <p className="top-three__empty" role="status">{topThreeError}</p> : topNotes.length === 0 ? <p className="top-three__empty">Add important notes from the note menu.</p> : <ol className="top-three__list">{topNotes.map((note) => <TopThreeDropRow key={note.id} noteId={note.id}>
         <button type="button" className={`top-three__check ${note.checked ? "is-checked" : ""}`} aria-label={note.checked ? "Uncheck note" : "Check note"} aria-pressed={note.checked} disabled={checkingNoteIds.has(note.id)} onClick={() => void toggleNoteChecked(note)}>{note.checked ? <Check size={12} strokeWidth={2.4} aria-hidden="true" /> : null}</button>
         <button type="button" className="top-three__note" onClick={() => showTopThreeNote(note)}><span>{parseStoredNote(note.note).plainText || "Untitled note"}</span></button>
+        <NoteDragHandle noteId={note.id} source="top-three" disabled={topThreeSaving || reorderSaving} />
         <button type="button" className="top-three__remove" aria-label={`Remove ${parseStoredNote(note.note).plainText || "note"} from Top 3`} disabled={topThreeSaving} onClick={() => void updateTopThree(note.id, true)}><X size={15} aria-hidden="true" /></button>
-      </li>)}</ol>}
+      </TopThreeDropRow>)}</ol>}
     </div>;
   }
 
@@ -655,6 +662,7 @@ export function NotesApp() {
             checked?: unknown;
             feed?: unknown;
             note?: unknown;
+            sort_position?: unknown;
             updated_at?: unknown;
           };
           if (typeof changedNote.id !== "string") {
@@ -670,6 +678,9 @@ export function NotesApp() {
               }
               if (typeof changedNote.checked === "boolean") {
                 nextNote.checked = changedNote.checked;
+              }
+              if (typeof changedNote.sort_position === "number" || changedNote.sort_position === null) {
+                nextNote.sortPosition = changedNote.sort_position;
               }
               if (typeof changedNote.note === "string" || changedNote.note === null) {
                 nextNote.note = changedNote.note;
@@ -901,9 +912,11 @@ export function NotesApp() {
       });
       const body = (await response.json()) as { note?: Reminder; error?: string };
       if (!response.ok || !body.note) throw new Error(body.error || "Could not move note");
+      return true;
     } catch (moveError) {
       setNotes((current) => current.map((item) => item.id === note.id ? { ...item, feed: previousFeed } : item));
       setError(moveError instanceof Error ? moveError.message : "Could not move note");
+      return false;
     } finally {
       setSavingNoteIds((current) => {
         const next = new Set(current);
@@ -911,6 +924,81 @@ export function NotesApp() {
         return next;
       });
     }
+  }
+
+  function handleNoteDragStart(event: DragStartEvent) {
+    const data = event.active.data.current as NoteDragData | undefined;
+    if (data?.kind === "note") { setDraggingNote(data); setContextMenu(null); cancelLongPress(); }
+  }
+
+  async function handleNoteDragEnd(event: DragEndEvent) {
+    setDraggingNote(null);
+    const source = event.active.data.current as NoteDragData | undefined;
+    const target = event.over?.data.current as { kind?: string; id?: string; noteId?: string; groupKey?: string } | undefined;
+    if (!source || !target) return;
+    const note = notes.find((item) => item.id === source.noteId);
+    if (!note || isOptimisticNote(note)) return;
+
+    if (target.kind === "top-three-row" && target.noteId) {
+      if (source.source === "feed") {
+        if (!topThreeIds.includes(note.id)) await updateTopThree(note.id, false);
+      } else if (target.noteId !== note.id) {
+        const next = topThreeIds.filter((id) => id !== note.id);
+        const targetIndex = next.indexOf(target.noteId);
+        if (targetIndex < 0) return;
+        const after = topThreeIds.indexOf(note.id) < topThreeIds.indexOf(target.noteId);
+        next.splice(targetIndex + (after ? 1 : 0), 0, note.id);
+        if (next.every((id, index) => id === topThreeIds[index])) return;
+        setTopThreeSaving(true);
+        setTopThreeIds(next);
+        try {
+          const response = await fetch("/api/top-three", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ noteIds: next }) });
+          const body = await response.json();
+          if (!response.ok) throw new Error(body.error || "Could not save Top 3 order");
+          setTopThreeIds(body.noteIds);
+        } catch (error) {
+          setTopThreeIds(topThreeIds);
+          toast.error(error instanceof Error ? error.message : "Could not save Top 3 order");
+        } finally { setTopThreeSaving(false); }
+      }
+      return;
+    }
+    if (target.kind === "top-three") {
+      if (source.source === "feed" && !topThreeIds.includes(note.id)) await updateTopThree(note.id, false);
+      return;
+    }
+    if (target.kind === "feed" && target.id) {
+      const feed = target.id.startsWith("tray:") ? target.id.slice(5) : target.id;
+      const moved = (note.feed ?? "all") === feed || await moveNote(note, feed);
+      if (moved && source.source === "top-three") await updateTopThree(note.id, true);
+      return;
+    }
+    if (target.kind !== "row" || !target.noteId || !target.groupKey) return;
+    if (source.source === "top-three") {
+      const destination = notes.find((item) => item.id === target.noteId)?.feed ?? "all";
+      const moved = (note.feed ?? "all") === destination || await moveNote(note, destination);
+      if (moved) await updateTopThree(note.id, true);
+      return;
+    }
+    if (searching) { toast("Clear search to reorder notes."); return; }
+    if (source.groupKey !== target.groupKey) { toast("Notes can only be reordered within the same date group."); return; }
+    const group = timelineGroups.find((item) => item.key === target.groupKey);
+    if (!group) return;
+    const after = group.notes.findIndex((item) => item.id === note.id) < group.notes.findIndex((item) => item.id === target.noteId);
+    const items = reorderGroup(group.notes, note.id, target.noteId, after);
+    if (!items) return;
+    const positions = new Map(items.map((item) => [item.id, item.position]));
+    const previous = new Map(group.notes.map((item) => [item.id, item.sortPosition ?? null]));
+    setReorderSaving(true);
+    setNotes((current) => current.map((item) => positions.has(item.id) ? { ...item, sortPosition: positions.get(item.id)! } : item));
+    try {
+      const response = await fetch("/api/notes/reorder", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ items }) });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || "Could not save note order");
+    } catch (error) {
+      setNotes((current) => current.map((item) => previous.has(item.id) ? { ...item, sortPosition: previous.get(item.id)! } : item));
+      toast.error(error instanceof Error ? error.message : "Could not save note order");
+    } finally { setReorderSaving(false); }
   }
 
   function showNoteMenu(noteId: string, x: number, y: number) {
@@ -1049,6 +1137,12 @@ export function NotesApp() {
   }
 
   return (
+    <DndContext sensors={dragSensors} collisionDetection={(args) => {
+      if (args.pointerCoordinates) return pointerWithin(args);
+      const hits = rectIntersection(args);
+      const rows = hits.filter((hit) => hit.data?.droppableContainer?.data.current?.kind === "row" || hit.data?.droppableContainer?.data.current?.kind === "top-three-row");
+      return rows.length ? rows : hits.length ? hits : closestCenter(args);
+    }} onDragStart={handleNoteDragStart} onDragEnd={(event) => void handleNoteDragEnd(event)} onDragCancel={() => setDraggingNote(null)}>
     <main className="notes-app">
       <header className="notes-header">
         <div className="notes-header__inner">
@@ -1116,6 +1210,7 @@ export function NotesApp() {
 
       <nav className={`feed-tabs ${customFeeds.length > 7 ? "feed-tabs--scrollable" : ""}`} aria-label="Feeds">
         {allFeeds.map((feed) => editingFeedId === feed.id ? <div key={feed.id}>{tabNameInput("feed-tab feed-tab--input", feed.id)}{feedError ? <span className="feed-inline-error" role="alert">{feedError}</span> : null}</div> : (
+          <NoteDropTarget key={feed.id} id={feed.id} kind="feed" className="feed-drop-target">
           <motion.button
             type="button"
             key={feed.id}
@@ -1141,12 +1236,13 @@ export function NotesApp() {
               selectFeed(feed.id);
             }}
           >{feed.name}</motion.button>
+          </NoteDropTarget>
         ))}
         {createFeedOpen && !feedMenuOpen ? tabNameInput("feed-tab feed-tab--input") : null}
         {feedError && !feedMenuOpen && !editingFeedId ? <span className="feed-inline-error" role="alert">{feedError}</span> : null}
         {!createFeedOpen ? <motion.button type="button" className={`feed-add-button ${!reduceMotion ? "feed-tab--draggable" : ""}`} aria-label="Create tab" style={{ y: feedOffset("__add__") }} onPointerDown={(event) => startTabDrag(event, "__add__")} onPointerMove={moveTabDrag} onPointerUp={(event) => endTabDrag(event)} onPointerCancel={(event) => endTabDrag(event, true)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") suppressTabClickRef.current = null; }} onClick={() => { if (suppressTabClickRef.current === "__add__") { suppressTabClickRef.current = null; return; } beginCreateFeed(); }}><span aria-hidden="true">+</span></motion.button> : null}
       </nav>
-      <aside className="top-three" aria-label="Top 3 important notes">{topThreeContent()}</aside>
+      <aside className="top-three" aria-label="Top 3 important notes"><NoteDropTarget id="desktop" kind="top-three" className="top-three__drop-target">{topThreeContent()}</NoteDropTarget></aside>
       <div className="notes-stage">
         <section
           ref={scrollRef}
@@ -1208,8 +1304,10 @@ export function NotesApp() {
                           const isChecked = note.checked;
                           const isChecking = checkingNoteIds.has(note.id);
                           return (
-                            <motion.article
+                            <NoteDropRow
                               key={noteRenderKeysRef.current.get(note.id) ?? note.id}
+                              noteId={note.id}
+                              groupKey={group.key}
                               data-note-id={note.id}
                               layout
                               animate={{ opacity: 1, y: 0 }}
@@ -1227,6 +1325,7 @@ export function NotesApp() {
                                   return;
                                 }
                                 if (event.button !== 0 || isSaving || isSavingEdit || isEditing) return;
+                                if (event.target instanceof Element && event.target.closest(".note-drag-handle")) return;
                                 if (event.target instanceof Element && event.target.closest("a")) return;
                                 const checkbox = event.currentTarget.querySelector<HTMLButtonElement>(".note-check");
                                 if (checkbox) {
@@ -1310,8 +1409,9 @@ export function NotesApp() {
                                   {searching ? <span className="note-search-feed">{allFeeds.find((feed) => feed.id === (note.feed ?? "all"))?.name ?? "All"}</span> : null}
                                 </div>
                               )}
+                              <NoteDragHandle noteId={note.id} source="feed" groupKey={group.key} disabled={isSaving || isSavingEdit || isEditing || reorderSaving} />
                               <span className="sr-only">Right-click or press and hold for note actions.</span>
-                            </motion.article>
+                            </NoteDropRow>
                           );
                         })}
                       </AnimatePresence>
@@ -1442,6 +1542,12 @@ export function NotesApp() {
           </div>
         ) : null}
       </footer>
+      {draggingNote ? <div className="note-drag-destinations" aria-label="Move note to">
+        {allFeeds.map((feed) => <NoteDropTarget key={feed.id} kind="feed" id={`tray:${feed.id}`} className="note-drag-destination">{feed.name}</NoteDropTarget>)}
+        <NoteDropTarget kind="top-three" id="tray" className="note-drag-destination">Top 3</NoteDropTarget>
+      </div> : null}
     </main>
+    <DragOverlay dropAnimation={null}>{draggingNote ? <div className="note-drag-preview">{parseStoredNote(notes.find((note) => note.id === draggingNote.noteId)?.note ?? null).plainText || "Note"}</div> : null}</DragOverlay>
+    </DndContext>
   );
 }

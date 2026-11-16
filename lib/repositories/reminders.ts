@@ -30,6 +30,7 @@ type DbReminderRow = {
   note: string | null;
   pinned?: boolean | null;
   checked?: boolean | null;
+  sort_position?: number | null;
   status: "upcoming" | "archived";
   archive_reason: "completed" | "auto" | "manual" | null;
   remind_at: string | null;
@@ -209,6 +210,7 @@ function mapReminderRow(row: DbReminderRow): Reminder {
     note: row.note,
     pinned: Boolean(row.pinned),
     checked: Boolean(row.checked),
+    sortPosition: row.sort_position ?? null,
     status: row.status,
     archiveReason: row.archive_reason,
     remindAt: row.remind_at,
@@ -818,6 +820,21 @@ export async function getUpcomingReminders(userId: string): Promise<Reminder[]> 
 
 export async function getNotes(userId: string): Promise<Reminder[]> {
   return shouldUseSupabase(userId) ? getNotesSupabase(userId) : getNotesLocal(userId);
+}
+
+export async function reorderNotes(userId: string, items: { id: string; position: number }[]): Promise<boolean> {
+  if (!items.length || new Set(items.map((item) => item.id)).size !== items.length || items.some((item) => !Number.isFinite(item.position))) return false;
+  if (!shouldUseSupabase(userId)) {
+    const store = getStore();
+    const reminders = items.map((item) => store.reminders.get(item.id));
+    if (reminders.some((note) => !note || note.userId !== userId) || new Set(reminders.map((note) => note?.feed ?? "all")).size !== 1) return false;
+    reminders.forEach((note, index) => { note!.sortPosition = items[index].position; });
+    return true;
+  }
+  if (items.some((item) => !isUuid(item.id))) return false;
+  const { data, error } = await getSupabaseServiceClient()!.rpc("reorder_note_positions", { p_user_id: userId, p_note_ids: items.map((item) => item.id), p_positions: items.map((item) => item.position) });
+  if (error) throw new Error(error.message);
+  return data === true;
 }
 
 export async function deleteNote(userId: string, noteId: string): Promise<boolean> {

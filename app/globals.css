@@ -3037,7 +3037,7 @@ html {
 
 .note-row {
   display: grid;
-  grid-template-columns: 40px minmax(0, 1fr);
+  grid-template-columns: 40px minmax(0, 1fr) 28px;
   align-items: center;
   gap: 16px;
   padding: 16px 0;
@@ -3230,7 +3230,7 @@ html {
   background: transparent;
   color: var(--text);
   font-size: 18px;
-  font-weight: 400;
+  font-weight: 600;
   line-height: 1.1;
   letter-spacing: -0.18px;
 }
@@ -3449,7 +3449,7 @@ html {
   }
 
   .note-row {
-    grid-template-columns: 40px minmax(0, 1fr);
+    grid-template-columns: 40px minmax(0, 1fr) 28px;
     gap: 12px;
     touch-action: pan-y;
   }
@@ -3586,12 +3586,15 @@ html {
 .calendar-connect { display: inline-block; padding: 10px 12px; border-radius: 9px; background: #1e1d18; color: white; text-decoration: none; font-weight: 700; }
 .calendar-panel .calendar-error { color: #a43b2d; margin-bottom: 0; }
 .notes-list { justify-content: flex-end; }
-.calendar-event { display: grid; grid-template-columns: 17px minmax(0, 1fr) 40px; gap: 13px; align-items: center; padding: 20px 2px; color: #1e1d18; }
-.calendar-event > svg { align-self: start; margin-top: 2px; color: #a66c35; }
+.calendar-event { display: grid; grid-template-columns: 40px minmax(0, 1fr) 40px; gap: 16px; align-items: center; padding: 20px 0; color: #1e1d18; }
+.calendar-event__icon { display: grid; place-items: center; align-self: start; width: 40px; height: 40px; margin-top: -6px; color: #a66c35; }
+.calendar-event__icon .note-check__circle { border-color: transparent; }
 .calendar-event__check { cursor: default; }
+.calendar-event > div > a, .calendar-event > div > span { font-size: 18px; font-weight: 600; line-height: 1.58; overflow-wrap: anywhere; white-space: pre-wrap; text-wrap: pretty; }
 .calendar-event a { color: inherit; text-decoration: none; }
 @media (hover: hover) and (pointer: fine) { .calendar-event a:hover { text-decoration: underline; } }
 .calendar-event small { display: block; margin-top: 5px; color: rgba(30,29,24,.55); font-size: 12px; overflow-wrap: anywhere; }
+@media (max-width: 560px) { .calendar-event { gap: 12px; } }
 
 @media (pointer: coarse) {
   input, textarea, select, [contenteditable="true"] { font-size: max(16px, 1em); }
@@ -3763,3 +3766,31 @@ html {
   .top-three { display: none; }
   .top-three__mobile-trigger { display: grid; place-items: center; flex: none; width: 40px; height: 40px; padding: 0; border: 1.5px solid #1e1d18; border-radius: 50%; background: #ffed8c; box-shadow: 3px 2px 0 #1e1d18; color: #1e1d18; cursor: pointer; }
 }
+
+/* Drag handles keep note editing and touch scrolling separate from moving notes. */
+.note-row { position: relative; }
+.note-drag-handle {
+  display: grid; place-items: center; flex: none; width: 28px; height: 36px; padding: 0;
+  border: 0; border-radius: 8px; background: transparent; color: rgba(30, 29, 24, .58);
+  cursor: grab; touch-action: none; user-select: none;
+}
+.note-drag-handle:active { cursor: grabbing; }
+.note-drag-handle:focus-visible { outline: 2px solid #1e1d18; outline-offset: 1px; opacity: 1; }
+.note-row > .note-drag-handle { grid-column: 3; grid-row: 1; }
+.note-row > .note-check { grid-column: 1; grid-row: 1; }
+.note-row > .note-row__text, .note-row > .note-row__editor { grid-column: 2; grid-row: 1; }
+.top-three__list .note-drag-handle { width: 22px; height: 24px; margin: -2px 0; }
+.top-three__list li[data-drop-active="true"] { box-shadow: inset 0 -2px #1e1d18; }
+@media (hover: hover) and (pointer: fine) {
+  .note-drag-handle { opacity: 0; }
+  .note-row:hover > .note-drag-handle, .note-row:focus-within > .note-drag-handle,
+  .top-three__list li:hover .note-drag-handle, .top-three__list li:focus-within .note-drag-handle { opacity: 1; }
+}
+.note-row[data-drop-active="true"] { box-shadow: inset 0 -2px #1e1d18; }
+.feed-drop-target { width: 88px; flex-shrink: 0; border-radius: 18px; }
+.feed-drop-target[data-drop-active="true"] { outline: 2px solid #1e1d18; outline-offset: 3px; }
+.top-three__drop-target[data-drop-active="true"] .top-three__content { outline: 2px dashed #1e1d18; outline-offset: 4px; }
+.note-drag-preview { max-width: min(300px, 75vw); max-height: 100px; overflow: hidden; padding: 12px 16px; border: 1.5px solid #1e1d18; border-radius: 12px; background: #fff7b4; box-shadow: 3px 2px 0 #1e1d18; color: #1e1d18; font-size: 16px; line-height: 1.3; overflow-wrap: anywhere; pointer-events: none; }
+.note-drag-destinations { position: fixed; z-index: 35; right: 12px; bottom: calc(var(--composer-overlay-height, 70px) + 12px); left: 12px; display: flex; justify-content: center; gap: 8px; overflow-x: auto; padding: 6px; pointer-events: none; }
+.note-drag-destination { flex: none; max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 10px 14px; border: 1.5px solid #1e1d18; border-radius: 18px; background: #ffed8c; color: #1e1d18; font-size: 14px; font-weight: 700; pointer-events: auto; }
+.note-drag-destination[data-drop-active="true"] { background: #edaa7f; }
