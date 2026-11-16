@@ -2983,18 +2983,18 @@ html {
   align-items: center;
   justify-content: space-between;
   gap: 20px;
-  margin-bottom: 8px;
-  padding: 0 2px;
+  margin-bottom: 0;
+  padding: 0 0 12px;
+  background: url('/figma-date-divider.svg') bottom left / 100% 1px no-repeat;
 }
 
 .notes-week__heading h2 {
   margin: 0;
-  color: rgba(30, 29, 24, 0.44);
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.075em;
-  line-height: 1.2;
-  text-transform: uppercase;
+  color: #1e1d18;
+  font-size: 32px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1;
   text-wrap: balance;
 }
 
@@ -3004,26 +3004,40 @@ html {
   gap: 8px;
 }
 
-.notes-today__label img {
-  display: block;
+.notes-today__badge {
+  display: flex;
   flex: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  width: 28px;
+  height: 32px;
+  padding: 2px;
+  border: solid #1e1d18;
+  border-width: 1px 3px 3px 1px;
+  border-radius: 5px;
+  font-size: 8px;
+  letter-spacing: -0.16px;
+  line-height: 1;
+  text-align: center;
+}
+
+.notes-today__badge span:last-child {
+  font-size: 12px;
+  letter-spacing: -0.24px;
 }
 
 .notes-week__items {
-  border-top: 1px solid rgba(7, 16, 69, 0.1);
-}
-
-.notes-week__items:has(> .notes-today:first-child) {
-  border-top: 0;
+  min-width: 0;
 }
 
 .note-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 40px;
+  grid-template-columns: 40px minmax(0, 1fr);
   align-items: center;
   gap: 16px;
-  padding: 23px 8px 24px;
-  border-bottom: 1px solid rgba(7, 16, 69, 0.1);
+  padding: 16px 0;
   outline: none;
   cursor: text;
   transition-property: background-color, box-shadow;
@@ -3148,10 +3162,6 @@ html {
 .note-check:disabled {
   cursor: default;
   opacity: 0.32;
-}
-
-.note-row.is-last-in-group {
-  border-bottom: 0;
 }
 
 .notes-composer-area {
@@ -3436,9 +3446,8 @@ html {
   }
 
   .note-row {
-    grid-template-columns: minmax(0, 1fr) 40px;
+    grid-template-columns: 40px minmax(0, 1fr);
     gap: 12px;
-    padding-block: 20px;
     touch-action: pan-y;
   }
 
@@ -3574,8 +3583,7 @@ html {
 .calendar-connect { display: inline-block; padding: 10px 12px; border-radius: 9px; background: #1e1d18; color: white; text-decoration: none; font-weight: 700; }
 .calendar-panel .calendar-error { color: #a43b2d; margin-bottom: 0; }
 .notes-list { justify-content: flex-end; }
-.calendar-event { display: grid; grid-template-columns: 17px minmax(0, 1fr) 40px; gap: 13px; align-items: center; padding: 20px 2px; border-top: 1px solid rgba(7,16,69,.1); color: #1e1d18; }
-.notes-today + .note-row { border-top: 1px solid rgba(7, 16, 69, .1); }
+.calendar-event { display: grid; grid-template-columns: 17px minmax(0, 1fr) 40px; gap: 13px; align-items: center; padding: 20px 2px; color: #1e1d18; }
 .calendar-event > svg { align-self: start; margin-top: 2px; color: #a66c35; }
 .calendar-event__check { cursor: default; }
 .calendar-event a { color: inherit; text-decoration: none; }
