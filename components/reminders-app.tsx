@@ -3,6 +3,7 @@
 import * as motion from "motion/react-client";
 import { AnimatePresence } from "motion/react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { startTransition, useEffect, useMemo, useRef, useState } from "react";
 import { Archive, Attachment, Calendar, Close, Filter, SwapVertical } from "griddy-icons";
 import { PacmanLoader } from "react-spinners";
@@ -519,7 +520,7 @@ export function RemindersApp() {
     <main className="app-frame">
       <header className="top-bar">
         <div className="top-bar__inner">
-          <p className="top-bar__title">Later™</p>
+          <Image className="top-bar__title" src="/later-logo.svg" alt="Later" width={100} height={35} priority />
           <div className="top-bar__actions">
             <div className="top-bar__search-wrap">
               <input

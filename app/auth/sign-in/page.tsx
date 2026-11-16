@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import Image from "next/image";
 import { SignInHeroCard } from "@/components/sign-in-hero-card";
 import { SignInClient } from "@/components/sign-in-client";
 
@@ -8,7 +9,7 @@ export default function SignInPage() {
       <SignInHeroCard />
 
       <section className="sign-in-auth">
-        <p className="sign-in-logo">Later™</p>
+        <Image className="sign-in-logo" src="/later-logo.svg" alt="Later" width={112} height={39} priority />
         <p className="sign-in-explainer">
           Enter your email and we&apos;ll send you a secure magic link. Open it on this device to sign in or create your
           account automatically.

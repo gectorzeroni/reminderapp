@@ -124,9 +124,9 @@ a {
 
 .sign-in-logo {
   margin: 0;
-  font-family: var(--font-display), var(--font-inter), "Segoe UI", sans-serif;
-  font-size: 36px;
-  line-height: 0.95;
+  display: block;
+  width: 112px;
+  height: auto;
 }
 
 .sign-in-explainer {
@@ -321,11 +321,9 @@ select {
 
 .top-bar__title {
   margin: 0;
-  font-family: var(--font-display), var(--font-inter), "Segoe UI", sans-serif;
-  font-size: 2.1rem;
-  font-weight: 400;
-  letter-spacing: 0.02em;
-  line-height: 1;
+  display: block;
+  width: 100px;
+  height: auto;
 }
 
 .top-bar__actions {
@@ -2476,10 +2474,6 @@ select {
     text-align: center;
   }
 
-  .sign-in-logo {
-    font-size: 36px;
-  }
-
   .sign-in-explainer {
     font-size: 14px;
   }
@@ -2760,11 +2754,9 @@ html {
 }
 
 .notes-brand__wordmark {
-  font-family: var(--font-display), var(--font-inter), sans-serif;
-  font-size: 28px;
-  font-weight: 400;
-  line-height: 1;
-  color: #1e1d18;
+  display: block;
+  width: 100px;
+  height: auto;
 }
 
 .notes-header__actions { display: flex; align-items: center; gap: 12px; min-width: 0; }

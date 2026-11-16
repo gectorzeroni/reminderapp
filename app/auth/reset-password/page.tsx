@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
+import Image from "next/image";
 import { SignInHeroCard } from "@/components/sign-in-hero-card";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 
@@ -80,7 +81,7 @@ export default function ResetPasswordPage() {
     <main className="sign-in-layout">
       <SignInHeroCard />
       <section className="sign-in-auth">
-        <p className="sign-in-logo">Later™</p>
+        <Image className="sign-in-logo" src="/later-logo.svg" alt="Later" width={112} height={39} priority />
         <p className="sign-in-explainer">
           Set a new password for your account.
         </p>

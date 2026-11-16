@@ -989,7 +989,7 @@ export function NotesApp() {
       <header className="notes-header">
         <div className="notes-header__inner">
           <div className="notes-brand">
-            <span className="notes-brand__wordmark">Later™</span>
+            <Image className="notes-brand__wordmark" src="/later-logo.svg" alt="Later" width={100} height={35} priority />
             <Popover.Root open={feedMenuOpen} onOpenChange={(open) => { if (!open && createFeedOpen) void saveNewFeed(newFeedName); setFeedMenuOpen(open); }}>
               <Popover.Trigger asChild>
                 <button type="button" className="feed-mobile-trigger" aria-label="Choose feed">
