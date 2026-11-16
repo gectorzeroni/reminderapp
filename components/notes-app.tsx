@@ -2,7 +2,7 @@
 
 import { play, unlock } from "cuelume";
 import { animate, AnimatePresence, motion, motionValue, useMotionValue, useReducedMotion, type MotionValue } from "motion/react";
-import { ArrowDown, ArrowRightLeft, CalendarDays, Check, ChevronDown, LogOut, Pencil, Plus, Search, Trash2, X } from "lucide-react";
+import { ArrowDown, ArrowRightLeft, CalendarDays, Check, ChevronDown, LogOut, Pencil, Plus, Search, Star, Trash2, X } from "lucide-react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { AlertDialog, Popover } from "radix-ui";
@@ -145,6 +145,10 @@ export function NotesApp() {
   const tabDragRef = useRef<{ pointerId: number; feed: NoteFeed; startY: number; startOffset: number; lastY: number; lastTime: number; velocity: number; dragged: boolean } | null>(null);
   const suppressTabClickRef = useRef<NoteFeed | null>(null);
   const [notes, setNotes] = useState<Reminder[]>([]);
+  const [topThreeIds, setTopThreeIds] = useState<string[]>([]);
+  const [topThreeError, setTopThreeError] = useState<string | null>(null);
+  const [topThreeSaving, setTopThreeSaving] = useState(false);
+  const [topThreeOpen, setTopThreeOpen] = useState(false);
   const [activeFeed, setActiveFeed] = useState<NoteFeed>("all");
   const [drafts, setDrafts] = useState<Record<NoteFeed, string>>({ all: "", ideas: "" });
   const [feedMenuOpen, setFeedMenuOpen] = useState(false);
@@ -230,6 +234,65 @@ export function NotesApp() {
     }).catch((error) => { if (!cancelled) setError(error instanceof Error ? error.message : "Could not load tabs"); });
     return () => { cancelled = true; };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadTopThree() {
+      try {
+        const response = await fetch("/api/top-three", { cache: "no-store" });
+        const body = await response.json();
+        if (!response.ok) throw new Error(body.error || "Could not load Top 3");
+        if (!cancelled) { setTopThreeIds(body.noteIds); setTopThreeError(null); }
+      } catch {
+        if (!cancelled) setTopThreeError("Could not load Top 3. Try refreshing.");
+      }
+    }
+    void loadTopThree();
+    window.addEventListener("focus", loadTopThree);
+    return () => { cancelled = true; window.removeEventListener("focus", loadTopThree); };
+  }, []);
+
+  async function updateTopThree(noteId: string, remove: boolean) {
+    if (topThreeSaving) return;
+    setContextMenu(null);
+    setTopThreeSaving(true);
+    try {
+      const response = await fetch("/api/top-three", { method: remove ? "DELETE" : "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ noteId }) });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || "Could not update Top 3");
+      setTopThreeIds(body.noteIds);
+      setTopThreeError(null);
+    } catch (error) { toast.error(error instanceof Error ? error.message : "Could not update Top 3"); }
+    finally { setTopThreeSaving(false); }
+  }
+
+  function showTopThreeNote(note: Reminder) {
+    setTopThreeOpen(false);
+    setSearchQuery("");
+    setSearchOpen(false);
+    selectFeed(note.feed ?? "all");
+    shouldScrollToLatestRef.current = false;
+    window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
+      const scroller = scrollRef.current;
+      const row = Array.from(scroller?.querySelectorAll<HTMLElement>("[data-note-id]") ?? []).find((item) => item.dataset.noteId === note.id);
+      if (!row || !scroller) return;
+      const top = scroller.scrollTop + row.getBoundingClientRect().top - scroller.getBoundingClientRect().top - 28;
+      scroller.scrollTo({ top, behavior: reduceMotion ? "auto" : "smooth" });
+      row.focus({ preventScroll: true });
+    }));
+  }
+
+  function topThreeContent() {
+    const topNotes = topThreeIds.map((id) => notes.find((note) => note.id === id)).filter((note): note is Reminder => Boolean(note));
+    return <div className="top-three__content">
+      <div className="top-three__heading"><h2>Top 3</h2><span className="sr-only">{topThreeIds.length} of 3 notes</span></div>
+      {topThreeError ? <p className="top-three__empty" role="status">{topThreeError}</p> : topNotes.length === 0 ? <p className="top-three__empty">Add important notes from the note menu.</p> : <ol className="top-three__list">{topNotes.map((note) => <li key={note.id}>
+        <button type="button" className={`top-three__check ${note.checked ? "is-checked" : ""}`} aria-label={note.checked ? "Uncheck note" : "Check note"} aria-pressed={note.checked} disabled={checkingNoteIds.has(note.id)} onClick={() => void toggleNoteChecked(note)}>{note.checked ? <Check size={12} strokeWidth={2.4} aria-hidden="true" /> : null}</button>
+        <button type="button" className="top-three__note" onClick={() => showTopThreeNote(note)}><span>{parseStoredNote(note.note).plainText || "Untitled note"}</span></button>
+        <button type="button" className="top-three__remove" aria-label={`Remove ${parseStoredNote(note.note).plainText || "note"} from Top 3`} disabled={topThreeSaving} onClick={() => void updateTopThree(note.id, true)}><X size={15} aria-hidden="true" /></button>
+      </li>)}</ol>}
+    </div>;
+  }
 
   function beginCreateFeed() {
     cancelFeedRef.current = false;
@@ -348,7 +411,7 @@ export function NotesApp() {
   function startTabDrag(event: ReactPointerEvent<HTMLButtonElement>, feed: NoteFeed) {
     if (reduceMotion || event.button !== 0 || !event.isPrimary || tabDragRef.current) return;
     void unlock();
-    const stack = [...allFeeds, { id: "__add__", name: "Create tab" }];
+    const stack = [{ id: "__add__", name: "Create tab" }, ...allFeeds];
     const index = stack.findIndex((item) => item.id === feed);
     const neighbor = stack[index === 0 ? 1 : index - 1];
     if (!neighbor) return;
@@ -368,13 +431,13 @@ export function NotesApp() {
   function moveTabDrag(event: ReactPointerEvent<HTMLButtonElement>) {
     const gesture = tabDragRef.current;
     if (!gesture || gesture.pointerId !== event.pointerId) return;
-    const direction = gesture.feed === "all" ? -1 : 1;
+    const direction = gesture.feed === "__add__" ? -1 : 1;
     const delta = (event.clientY - gesture.startY) * direction;
     if (!gesture.dragged && delta <= 6) return;
     gesture.dragged = true;
     const distance = Math.max(0, gesture.startOffset * direction + delta);
     const resistedOffset = distance <= 90 ? distance : 90 + (distance - 90) * 0.25;
-    const offset = gesture.feed === "all" ? Math.min(96, resistedOffset) : resistedOffset;
+    const offset = gesture.feed === "__add__" ? Math.min(96, resistedOffset) : resistedOffset;
     const elapsed = event.timeStamp - gesture.lastTime;
     if (elapsed > 0) gesture.velocity = (event.clientY - gesture.lastY) / elapsed * 1000;
     gesture.lastY = event.clientY;
@@ -388,8 +451,8 @@ export function NotesApp() {
     tabDragRef.current = null;
     if (!gesture.dragged) return;
     suppressTabClickRef.current = cancelled ? null : gesture.feed;
-    const direction = gesture.feed === "all" ? -1 : 1;
-    const stack = [...allFeeds, { id: "__add__", name: "Create tab" }];
+    const direction = gesture.feed === "__add__" ? -1 : 1;
+    const stack = [{ id: "__add__", name: "Create tab" }, ...allFeeds];
     const index = stack.findIndex((item) => item.id === gesture.feed);
     const neighbor = stack[index === 0 ? 1 : index - 1];
     const draggedOffset = feedOffset(gesture.feed);
@@ -853,7 +916,7 @@ export function NotesApp() {
   function showNoteMenu(noteId: string, x: number, y: number) {
     if (savingNoteIds.has(noteId) || checkingNoteIds.has(noteId)) return;
     const menuWidth = 176;
-    const menuHeight = Math.min(window.innerHeight - 20, 12 + allFeeds.length * 44);
+    const menuHeight = Math.min(window.innerHeight - 20, 56 + allFeeds.length * 44);
     const gutter = 10;
     setContextMenu({
       noteId,
@@ -916,6 +979,7 @@ export function NotesApp() {
       const response = await fetch(`/api/notes/${pending.note.id}`, { method: "DELETE" });
       const body = (await response.json()) as { error?: string };
       if (!response.ok) throw new Error(body.error || "Could not delete note");
+      setTopThreeIds((current) => current.filter((id) => id !== pending.note.id));
     } catch (deleteError) {
       setNotes((current) => {
         if (current.some((note) => note.id === pending.note.id)) return current;
@@ -1006,6 +1070,10 @@ export function NotesApp() {
             </Popover.Root>
           </div>
           <div className="notes-header__actions">
+            <Popover.Root open={topThreeOpen} onOpenChange={setTopThreeOpen}>
+              <Popover.Trigger asChild><button type="button" className="top-three__mobile-trigger" aria-label="Open Top 3"><Star size={18} aria-hidden="true" /></button></Popover.Trigger>
+              <Popover.Portal><Popover.Content className="top-three__popover" align="end" sideOffset={8} collisionPadding={16} aria-label="Top 3 important notes">{topThreeContent()}</Popover.Content></Popover.Portal>
+            </Popover.Root>
             <div className={`notes-search ${searchOpen ? "is-open" : ""}`} role="search">
               <div className="notes-search__surface" aria-hidden="true" />
               <button ref={searchTriggerRef} type="button" className="notes-search-trigger" aria-label="Search notes" aria-expanded={searchOpen} aria-controls="notes-search-input" onClick={() => { setSearchOpen(true); searchInputRef.current?.focus(); }}><Search size={16} aria-hidden="true" /></button>
@@ -1078,6 +1146,7 @@ export function NotesApp() {
         {feedError && !feedMenuOpen && !editingFeedId ? <span className="feed-inline-error" role="alert">{feedError}</span> : null}
         {!createFeedOpen ? <motion.button type="button" className={`feed-add-button ${!reduceMotion ? "feed-tab--draggable" : ""}`} aria-label="Create tab" style={{ y: feedOffset("__add__") }} onPointerDown={(event) => startTabDrag(event, "__add__")} onPointerMove={moveTabDrag} onPointerUp={(event) => endTabDrag(event)} onPointerCancel={(event) => endTabDrag(event, true)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") suppressTabClickRef.current = null; }} onClick={() => { if (suppressTabClickRef.current === "__add__") { suppressTabClickRef.current = null; return; } beginCreateFeed(); }}><span aria-hidden="true">+</span></motion.button> : null}
       </nav>
+      <aside className="top-three" aria-label="Top 3 important notes">{topThreeContent()}</aside>
       <div className="notes-stage">
         <section
           ref={scrollRef}
@@ -1141,6 +1210,7 @@ export function NotesApp() {
                           return (
                             <motion.article
                               key={noteRenderKeysRef.current.get(note.id) ?? note.id}
+                              data-note-id={note.id}
                               layout
                               animate={{ opacity: 1, y: 0 }}
                               exit={{ opacity: 0, y: -8, transition: { duration: 0.14, ease: "easeIn" } }}
@@ -1252,11 +1322,23 @@ export function NotesApp() {
             </AnimatePresence>
           </motion.div>
         </section>
-        {showScrollToBottom ? (
-          <button type="button" className="notes-scroll-bottom" aria-label="Scroll to newest notes" onClick={() => scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: reduceMotion ? "auto" : "smooth" })}>
-            <ArrowDown size={16} aria-hidden="true" />
-          </button>
-        ) : null}
+        <AnimatePresence initial={false}>
+          {showScrollToBottom ? (
+            <motion.button
+              key="scroll-bottom"
+              type="button"
+              className="notes-scroll-bottom"
+              aria-label="Scroll to newest notes"
+              initial={{ opacity: 0, transform: reduceMotion ? "none" : "scale(0.96)" }}
+              animate={{ opacity: 1, transform: "scale(1)" }}
+              exit={{ opacity: 0, transform: reduceMotion ? "none" : "scale(0.96)" }}
+              transition={{ duration: 0.16, ease: [0.23, 1, 0.32, 1] }}
+              onClick={() => scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: reduceMotion ? "auto" : "smooth" })}
+            >
+              <ArrowDown size={16} aria-hidden="true" />
+            </motion.button>
+          ) : null}
+        </AnimatePresence>
       </div>
 
       <AnimatePresence initial={false}>
@@ -1273,6 +1355,9 @@ export function NotesApp() {
             transition={{ type: "spring", duration: 0.22, bounce: 0 }}
             onContextMenu={(event) => event.preventDefault()}
           >
+            <button type="button" role="menuitem" className="note-context-menu__move" disabled={topThreeSaving || Boolean(topThreeError)} onClick={() => void updateTopThree(contextMenu.noteId, topThreeIds.includes(contextMenu.noteId))}>
+              <Star size={16} strokeWidth={1.8} aria-hidden="true" /> {topThreeIds.includes(contextMenu.noteId) ? "Remove from Top 3" : "Add to Top 3"}
+            </button>
             {allFeeds.filter((feed) => feed.id !== (notes.find((item) => item.id === contextMenu.noteId)?.feed ?? "all")).map((feed) => (
               <button key={feed.id} type="button" role="menuitem" className="note-context-menu__move" onClick={() => {
                 const note = notes.find((item) => item.id === contextMenu.noteId);
