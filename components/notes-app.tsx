@@ -83,7 +83,7 @@ function TodayEvents({ events }: { events: CalendarEvent[] }) {
 
   return (
     <div className="notes-today">
-      <div className="notes-week__heading"><h2 className="notes-today__label" aria-label={`Today, ${dayFormatter.format(new Date())}`}><span>Today</span><img src="/figma-date-separator.svg" alt="" aria-hidden="true" /><span>{dayFormatter.format(new Date())}</span></h2></div>
+      <div className="notes-week__heading"><h2 className="notes-today__label" aria-label={`Today, ${dayFormatter.format(new Date())}`}><span>Today</span><span className="notes-today__badge" aria-hidden="true"><span>{new Intl.DateTimeFormat("en-US", { month: "short" }).format(new Date()).toUpperCase()}</span><span>{new Date().getDate()}</span></span></h2></div>
       {[...events].sort((a, b) => Number(b.allDay) - Number(a.allDay) || a.start.localeCompare(b.start)).map((event) => {
         const ended = hasCalendarEventEnded(event, now);
         return (
@@ -1131,14 +1131,13 @@ export function NotesApp() {
                     >
                       {group.key === "today" ? <TodayEvents events={!searching && activeFeed === "all" ? calendarEvents : []} /> : null}
                       <AnimatePresence initial={false} mode="popLayout">
-                        {group.notes.map((note, index) => {
+                        {group.notes.map((note) => {
                           const text = parseStoredNote(note.note).plainText;
                           const isSaving = isOptimisticNote(note);
                           const isEditing = editingNoteId === note.id;
                           const isSavingEdit = savingNoteIds.has(note.id);
                           const isChecked = note.checked;
                           const isChecking = checkingNoteIds.has(note.id);
-                          const isLastInGroup = index === group.notes.length - 1;
                           return (
                             <motion.article
                               key={noteRenderKeysRef.current.get(note.id) ?? note.id}
@@ -1146,7 +1145,7 @@ export function NotesApp() {
                               animate={{ opacity: 1, y: 0 }}
                               exit={{ opacity: 0, y: -8, transition: { duration: 0.14, ease: "easeIn" } }}
                               transition={{ type: "spring", duration: 0.3, bounce: 0 }}
-                              className={`note-row ${isLastInGroup ? "is-last-in-group" : ""} ${isEditing ? "is-editing" : ""} ${contextMenu?.noteId === note.id ? "has-open-menu" : ""}`}
+                              className={`note-row ${isEditing ? "is-editing" : ""} ${contextMenu?.noteId === note.id ? "has-open-menu" : ""}`}
                               tabIndex={isSaving || isEditing ? -1 : 0}
                               aria-label={isSaving || isSavingEdit ? "Saving note" : undefined}
                               aria-busy={isSaving || isSavingEdit}
@@ -1183,34 +1182,6 @@ export function NotesApp() {
                               onPointerCancel={(event) => cancelLongPress(event.pointerId)}
                               onPointerLeave={(event) => cancelLongPress(event.pointerId)}
                             >
-                              {isEditing ? (
-                                <textarea
-                                  autoFocus
-                                  className="note-row__editor"
-                                  value={editingNoteText}
-                                  maxLength={5000}
-                                  aria-label="Edit note"
-                                  rows={1}
-                                  onChange={(event) => setEditingNoteText(event.target.value)}
-                                  onInput={(event) => resizeNoteEditor(event.currentTarget)}
-                                  onFocus={(event) => {
-                                    resizeNoteEditor(event.currentTarget);
-                                    const end = event.currentTarget.value.length;
-                                    event.currentTarget.setSelectionRange(end, end);
-                                  }}
-                                  onBlur={(event) => void finishEditingNote(note, event.currentTarget.value)}
-                                  onContextMenu={(event) => event.stopPropagation()}
-                                  onPointerDown={(event) => {
-                                    event.stopPropagation();
-                                    cancelLongPress();
-                                  }}
-                                />
-                              ) : (
-                                <div className="note-row__text">
-                                  <NoteLinkText text={text} disabled={isSaving || isSavingEdit} searchTerms={searching ? highlightTerms : []} onEdit={() => beginEditingNote(note)} />
-                                  {searching ? <span className="note-search-feed">{allFeeds.find((feed) => feed.id === (note.feed ?? "all"))?.name ?? "All"}</span> : null}
-                                </div>
-                              )}
                               <button
                                 type="button"
                                 className={`note-check ${isChecked ? "is-checked" : ""}`}
@@ -1241,6 +1212,34 @@ export function NotesApp() {
                                   </AnimatePresence>
                                 </span>
                               </button>
+                              {isEditing ? (
+                                <textarea
+                                  autoFocus
+                                  className="note-row__editor"
+                                  value={editingNoteText}
+                                  maxLength={5000}
+                                  aria-label="Edit note"
+                                  rows={1}
+                                  onChange={(event) => setEditingNoteText(event.target.value)}
+                                  onInput={(event) => resizeNoteEditor(event.currentTarget)}
+                                  onFocus={(event) => {
+                                    resizeNoteEditor(event.currentTarget);
+                                    const end = event.currentTarget.value.length;
+                                    event.currentTarget.setSelectionRange(end, end);
+                                  }}
+                                  onBlur={(event) => void finishEditingNote(note, event.currentTarget.value)}
+                                  onContextMenu={(event) => event.stopPropagation()}
+                                  onPointerDown={(event) => {
+                                    event.stopPropagation();
+                                    cancelLongPress();
+                                  }}
+                                />
+                              ) : (
+                                <div className="note-row__text">
+                                  <NoteLinkText text={text} disabled={isSaving || isSavingEdit} searchTerms={searching ? highlightTerms : []} onEdit={() => beginEditingNote(note)} />
+                                  {searching ? <span className="note-search-feed">{allFeeds.find((feed) => feed.id === (note.feed ?? "all"))?.name ?? "All"}</span> : null}
+                                </div>
+                              )}
                               <span className="sr-only">Right-click or press and hold for note actions.</span>
                             </motion.article>
                           );
