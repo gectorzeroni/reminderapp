@@ -40,6 +40,7 @@ export interface Reminder {
   note: string | null;
   pinned: boolean;
   checked: boolean;
+  sortPosition?: number | null;
   status: ReminderStatus;
   archiveReason: ArchiveReason;
   remindAt: string | null;

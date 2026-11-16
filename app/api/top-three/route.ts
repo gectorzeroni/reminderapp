@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { getCurrentUserId } from "@/lib/auth";
 import { badRequest, fromError, notFound, ok } from "@/lib/http";
-import { addTopThree, getTopThree, removeTopThree } from "@/lib/repositories/top-three";
+import { addTopThree, getTopThree, removeTopThree, reorderTopThree } from "@/lib/repositories/top-three";
 
 const inputSchema = z.object({ noteId: z.string().min(1).max(128) });
 export async function GET() {
@@ -23,6 +23,14 @@ export async function DELETE(request: Request) {
     const userId = await getCurrentUserId();
     const { noteId } = inputSchema.parse(await request.json());
     await removeTopThree(userId, noteId);
+    return ok({ noteIds: await getTopThree(userId) });
+  } catch (error) { return fromError(error); }
+}
+export async function PATCH(request: Request) {
+  try {
+    const userId = await getCurrentUserId();
+    const { noteIds } = z.object({ noteIds: z.array(z.string().min(1).max(128)).min(1).max(3) }).parse(await request.json());
+    if (!await reorderTopThree(userId, noteIds)) return badRequest("Top 3 changed. Refresh and try again.");
     return ok({ noteIds: await getTopThree(userId) });
   } catch (error) { return fromError(error); }
 }

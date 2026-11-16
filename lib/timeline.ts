@@ -43,6 +43,9 @@ export function groupNotesByPeriod(notes: Reminder[], now: Date, includeToday = 
     else groups.set(key, { key, label, notes: [note] });
   }
 
+  for (const group of groups.values()) {
+    group.notes.sort((a, b) => (a.sortPosition ?? new Date(a.createdAt).getTime()) - (b.sortPosition ?? new Date(b.createdAt).getTime()) || new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime() || a.id.localeCompare(b.id));
+  }
   if (includeToday && !groups.has("today")) groups.set("today", { key: "today", label: "Today", notes: [] });
   const months = [...groups.values()].filter((group) => group.key.startsWith("month-")).sort((a, b) => a.key.localeCompare(b.key));
   return [...months, ...["last-14-days", "last-3-days", "today"].flatMap((key) => groups.has(key) ? [groups.get(key)!] : [])];

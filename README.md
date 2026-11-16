@@ -89,3 +89,5 @@ Google OAuth is currently in Testing mode: only listed test users can connect, a
 Apply `supabase/migrations/20261113000000_add_note_feeds.sql` before deploying the All and Ideas feeds. Existing notes default to All. Apply `supabase/migrations/20261114000000_custom_note_feeds.sql` to enable custom tabs, then `supabase/migrations/20261115000000_delete_note_feed.sql` to enable safe tab deletion.
 
 Apply `supabase/migrations/20261116000000_top_three_notes.sql` to enable the Top 3 important notes list.
+
+Apply `supabase/migrations/20261117000000_note_sort_positions.sql` to enable saved drag-and-drop ordering for notes and Top 3.
