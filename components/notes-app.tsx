@@ -1,6 +1,6 @@
 "use client";
 
-import { play, unlock } from "cuelume";
+import { play as playCue, unlock, type PlayOptions, type SoundName } from "cuelume";
 import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, closestCenter, pointerWithin, rectIntersection, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
 import { animate, AnimatePresence, motion, motionValue, useMotionValue, useReducedMotion, type MotionValue } from "motion/react";
 import { ArrowDown, ArrowRightLeft, CalendarDays, Check, ChevronDown, LogOut, Pencil, Plus, Search, Star, Trash2, X } from "lucide-react";
@@ -30,6 +30,10 @@ import { reorderGroup } from "@/lib/note-order";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import type { NoteFeed, Reminder } from "@/lib/types";
 import type { CustomFeed } from "@/lib/repositories/feeds";
+
+function play(sound: SoundName, options?: PlayOptions) {
+  playCue(sound, { ...options, volume: Math.min(1, (options?.volume ?? 1) * 1.4) });
+}
 
 type CalendarAccount = { id: string; email: string };
 
@@ -91,9 +95,8 @@ function TodayEvents({ events }: { events: CalendarEvent[] }) {
         const ended = hasCalendarEventEnded(event, now);
         return (
           <div className="calendar-event" key={event.id}>
-            <span className="calendar-event__icon" aria-hidden="true"><span className="note-check__circle"><CalendarDays size={14} /></span></span>
+            <span className={`note-check calendar-event__check${ended ? " is-checked" : ""}`} role="img" aria-label={ended ? "Event ended" : "Event not ended"}><span className="note-check__circle">{ended ? <Check size={16} strokeWidth={2.4} aria-hidden="true" /> : null}</span></span>
             <div>{event.url ? <a href={event.url} target="_blank" rel="noreferrer">{event.title}</a> : <span>{event.title}</span>}<small>{event.allDay ? "All day" : new Date(event.start).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} · {event.account}</small></div>
-            {ended ? <span className="note-check is-checked calendar-event__check" role="img" aria-label="Event ended"><span className="note-check__circle"><Check size={16} strokeWidth={2.4} aria-hidden="true" /></span></span> : null}
           </div>
         );
       })}
@@ -291,13 +294,19 @@ export function NotesApp() {
   function topThreeContent() {
     const topNotes = topThreeIds.map((id) => notes.find((note) => note.id === id)).filter((note): note is Reminder => Boolean(note));
     return <div className="top-three__content">
+      <Image className="top-three__paper-clip" src="/top-three-paper-clip-hires.png" width={56} height={98} alt="" aria-hidden="true" />
+      <Image className="top-three__paper-clip top-three__paper-clip--pink" src="/top-three-pink-clip.png" width={50} height={82} alt="" aria-hidden="true" />
+      <div className="top-three__main">
       <div className="top-three__heading"><h2>Top 3</h2><span className="sr-only">{topThreeIds.length} of 3 notes</span></div>
+      <div className="top-three__divider" aria-hidden="true"><Image src="/top-three-divider.svg" width={257} height={4} alt="" /></div>
       {topThreeError ? <p className="top-three__empty" role="status">{topThreeError}</p> : topNotes.length === 0 ? <p className="top-three__empty">Add important notes from the note menu.</p> : <ol className="top-three__list">{topNotes.map((note) => <TopThreeDropRow key={note.id} noteId={note.id}>
         <button type="button" className={`top-three__check ${note.checked ? "is-checked" : ""}`} aria-label={note.checked ? "Uncheck note" : "Check note"} aria-pressed={note.checked} disabled={checkingNoteIds.has(note.id)} onClick={() => void toggleNoteChecked(note)}>{note.checked ? <Check size={12} strokeWidth={2.4} aria-hidden="true" /> : null}</button>
         <button type="button" className="top-three__note" onClick={() => showTopThreeNote(note)}><span>{parseStoredNote(note.note).plainText || "Untitled note"}</span></button>
         <NoteDragHandle noteId={note.id} source="top-three" disabled={topThreeSaving || reorderSaving} />
         <button type="button" className="top-three__remove" aria-label={`Remove ${parseStoredNote(note.note).plainText || "note"} from Top 3`} disabled={topThreeSaving} onClick={() => void updateTopThree(note.id, true)}><X size={15} aria-hidden="true" /></button>
       </TopThreeDropRow>)}</ol>}
+      </div>
+      <p className="top-three__footer">Try to complete these tasks by EOD. You can do it!</p>
     </div>;
   }
 
@@ -418,9 +427,9 @@ export function NotesApp() {
   function startTabDrag(event: ReactPointerEvent<HTMLButtonElement>, feed: NoteFeed) {
     if (reduceMotion || event.button !== 0 || !event.isPrimary || tabDragRef.current) return;
     void unlock();
-    const stack = [{ id: "__add__", name: "Create tab" }, ...allFeeds];
+    const stack = [...allFeeds, { id: "__add__", name: "Create tab" }];
     const index = stack.findIndex((item) => item.id === feed);
-    const neighbor = stack[index === 0 ? 1 : index - 1];
+    const neighbor = stack[index === stack.length - 1 ? index - 1 : index + 1];
     if (!neighbor) return;
     const draggedOffset = feedOffset(feed);
     const otherOffset = feedOffset(neighbor.id);
@@ -438,7 +447,7 @@ export function NotesApp() {
   function moveTabDrag(event: ReactPointerEvent<HTMLButtonElement>) {
     const gesture = tabDragRef.current;
     if (!gesture || gesture.pointerId !== event.pointerId) return;
-    const direction = gesture.feed === "__add__" ? -1 : 1;
+    const direction = gesture.feed === "__add__" ? 1 : -1;
     const delta = (event.clientY - gesture.startY) * direction;
     if (!gesture.dragged && delta <= 6) return;
     gesture.dragged = true;
@@ -458,10 +467,11 @@ export function NotesApp() {
     tabDragRef.current = null;
     if (!gesture.dragged) return;
     suppressTabClickRef.current = cancelled ? null : gesture.feed;
-    const direction = gesture.feed === "__add__" ? -1 : 1;
-    const stack = [{ id: "__add__", name: "Create tab" }, ...allFeeds];
+    const direction = gesture.feed === "__add__" ? 1 : -1;
+    const stack = [...allFeeds, { id: "__add__", name: "Create tab" }];
     const index = stack.findIndex((item) => item.id === gesture.feed);
-    const neighbor = stack[index === 0 ? 1 : index - 1];
+    const neighborIndex = index === stack.length - 1 ? index - 1 : index + 1;
+    const neighbor = stack[neighborIndex];
     const draggedOffset = feedOffset(gesture.feed);
     if (!neighbor) { animate(draggedOffset, 0, { type: "spring", stiffness: 480, damping: 24 }); return; }
     const otherOffset = feedOffset(neighbor.id);
@@ -507,7 +517,7 @@ export function NotesApp() {
           }
         });
       }
-      propagate(index === 0 ? 1 : index - 1, impactVelocity * 0.95);
+      propagate(neighborIndex, impactVelocity * 0.95);
       animate(draggedOffset, 0, { type: "spring", stiffness: 500, damping: 18, velocity: -impactVelocity * 0.3 });
     }
     animate(draggedOffset, -(tabGap + 4) * direction, {
@@ -968,7 +978,7 @@ export function NotesApp() {
       return;
     }
     if (target.kind === "feed" && target.id) {
-      const feed = target.id.startsWith("tray:") ? target.id.slice(5) : target.id;
+      const feed = target.id;
       const moved = (note.feed ?? "all") === feed || await moveNote(note, feed);
       if (moved && source.source === "top-three") await updateTopThree(note.id, true);
       return;
@@ -1136,6 +1146,10 @@ export function NotesApp() {
     router.refresh();
   }
 
+  const draggedNote = draggingNote ? notes.find((note) => note.id === draggingNote.noteId) : undefined;
+  const draggedWords = (parseStoredNote(draggedNote?.note ?? null).plainText.trim() || "Note").split(/\s+/);
+  const dragPreviewText = draggedWords.slice(0, 2).join(" ") + (draggedWords.length > 2 ? "…" : "");
+
   return (
     <DndContext sensors={dragSensors} collisionDetection={(args) => {
       if (args.pointerCoordinates) return pointerWithin(args);
@@ -1165,12 +1179,12 @@ export function NotesApp() {
           </div>
           <div className="notes-header__actions">
             <Popover.Root open={topThreeOpen} onOpenChange={setTopThreeOpen}>
-              <Popover.Trigger asChild><button type="button" className="top-three__mobile-trigger" aria-label="Open Top 3"><Star size={18} aria-hidden="true" /></button></Popover.Trigger>
-              <Popover.Portal><Popover.Content className="top-three__popover" align="end" sideOffset={8} collisionPadding={16} aria-label="Top 3 important notes">{topThreeContent()}</Popover.Content></Popover.Portal>
+              <NoteDropTarget id="mobile" kind="top-three" className="top-three__mobile-drop-target"><Popover.Trigger asChild><button type="button" className="top-three__mobile-trigger" aria-label="Open Top 3"><Star size={18} aria-hidden="true" /></button></Popover.Trigger></NoteDropTarget>
+              <Popover.Portal><Popover.Content className="top-three__popover" align="end" sideOffset={48} collisionPadding={16} aria-label="Top 3 important notes">{topThreeContent()}</Popover.Content></Popover.Portal>
             </Popover.Root>
             <div className={`notes-search ${searchOpen ? "is-open" : ""}`} role="search">
               <div className="notes-search__surface" aria-hidden="true" />
-              <button ref={searchTriggerRef} type="button" className="notes-search-trigger" aria-label="Search notes" aria-expanded={searchOpen} aria-controls="notes-search-input" onClick={() => { setSearchOpen(true); searchInputRef.current?.focus(); }}><Search size={16} aria-hidden="true" /></button>
+              <button ref={searchTriggerRef} type="button" className="notes-search-trigger" aria-label="Search notes" aria-expanded={searchOpen} aria-controls="notes-search-input" onClick={() => { play("select", { theme: "mech", emphasis: "subtle", volume: 0.4 }); setSearchOpen(true); searchInputRef.current?.focus(); }}><Search size={16} aria-hidden="true" /></button>
               <input ref={searchInputRef} id="notes-search-input" type="search" aria-label="Search notes" placeholder="Search notes or date" disabled={!searchOpen} value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") closeSearch(); }} />
               <button type="button" className="notes-search__close" aria-label="Close search" tabIndex={searchOpen ? 0 : -1} disabled={!searchOpen} onClick={closeSearch}><X size={16} aria-hidden="true" /></button>
             </div>
@@ -1179,7 +1193,7 @@ export function NotesApp() {
             if (!open) setCalendarOpen(false);
           }}>
             <Popover.Trigger asChild>
-              <button type="button" className="profile-trigger" aria-label="Profile menu">
+              <button type="button" className="profile-trigger" aria-label="Profile menu" onClick={() => play("select", { theme: "mech", emphasis: "subtle", volume: 0.4 })}>
                 <Image src="/default-avatar.png?v=2" alt="" width={40} height={40} className="profile-trigger__avatar" />
               </button>
             </Popover.Trigger>
@@ -1208,7 +1222,7 @@ export function NotesApp() {
         </div>
       </header>
 
-      <nav className={`feed-tabs ${customFeeds.length > 7 ? "feed-tabs--scrollable" : ""}`} aria-label="Feeds">
+      <nav className={`feed-tabs ${customFeeds.length > 7 ? "feed-tabs--scrollable" : ""} ${draggingNote ? "feed-tabs--dragging-note" : ""}`} aria-label="Feeds">
         {allFeeds.map((feed) => editingFeedId === feed.id ? <div key={feed.id}>{tabNameInput("feed-tab feed-tab--input", feed.id)}{feedError ? <span className="feed-inline-error" role="alert">{feedError}</span> : null}</div> : (
           <NoteDropTarget key={feed.id} id={feed.id} kind="feed" className="feed-drop-target">
           <motion.button
@@ -1542,12 +1556,8 @@ export function NotesApp() {
           </div>
         ) : null}
       </footer>
-      {draggingNote ? <div className="note-drag-destinations" aria-label="Move note to">
-        {allFeeds.map((feed) => <NoteDropTarget key={feed.id} kind="feed" id={`tray:${feed.id}`} className="note-drag-destination">{feed.name}</NoteDropTarget>)}
-        <NoteDropTarget kind="top-three" id="tray" className="note-drag-destination">Top 3</NoteDropTarget>
-      </div> : null}
     </main>
-    <DragOverlay dropAnimation={null}>{draggingNote ? <div className="note-drag-preview">{parseStoredNote(notes.find((note) => note.id === draggingNote.noteId)?.note ?? null).plainText || "Note"}</div> : null}</DragOverlay>
+    <DragOverlay dropAnimation={null}>{draggingNote ? <div className="note-drag-preview" aria-hidden="true"><span className={`note-drag-preview__check${draggedNote?.checked ? " is-checked" : ""}`}>{draggedNote?.checked ? <Check size={11} strokeWidth={2.4} /> : null}</span><span className="note-drag-preview__text">{dragPreviewText}</span></div> : null}</DragOverlay>
     </DndContext>
   );
 }

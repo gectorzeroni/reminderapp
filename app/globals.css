@@ -1,10 +1,59 @@
-@import url("https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800&display=swap");
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/* Match Nunito's 700 drawing to requests for 600 on Cyrillic fallback text. */
+@font-face {
+  font-family: "Nunito Cyrillic";
+  src: url("../node_modules/@fontsource-variable/nunito/files/nunito-cyrillic-wght-normal.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 200 599;
+  font-display: swap;
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: "Nunito Cyrillic";
+  src: url("../node_modules/@fontsource/nunito/files/nunito-cyrillic-700-normal.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: "Nunito Cyrillic";
+  src: url("../node_modules/@fontsource-variable/nunito/files/nunito-cyrillic-wght-normal.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 601 1000;
+  font-display: swap;
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: "Nunito Cyrillic";
+  src: url("../node_modules/@fontsource-variable/nunito/files/nunito-cyrillic-wght-italic.woff2") format("woff2");
+  font-style: italic;
+  font-weight: 200 599;
+  font-display: swap;
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: "Nunito Cyrillic";
+  src: url("../node_modules/@fontsource/nunito/files/nunito-cyrillic-700-italic.woff2") format("woff2");
+  font-style: italic;
+  font-weight: 600;
+  font-display: swap;
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: "Nunito Cyrillic";
+  src: url("../node_modules/@fontsource-variable/nunito/files/nunito-cyrillic-wght-italic.woff2") format("woff2");
+  font-style: italic;
+  font-weight: 601 1000;
+  font-display: swap;
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+
 :root {
-  --font-inter: "Nunito", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  --font-body: "Allo", "Nunito Cyrillic", "Nunito Variable", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
   --font-display: "Rubik Spray Paint";
   --bg: #ffed8c;
   --bg-accent: none;
@@ -47,7 +96,7 @@ button:not(.note-text-fragment), [role="button"] {
 }
 
 body {
-  font-family: var(--font-inter);
+  font-family: var(--font-body);
   font-weight: 400;
   background: var(--bg);
   color: var(--text);
@@ -2987,7 +3036,7 @@ html {
   justify-content: space-between;
   gap: 20px;
   margin-bottom: 0;
-  padding: 0 0 12px;
+  padding: 0 0 16px;
   background: url('/figma-date-divider.svg') bottom left / 100% 1px no-repeat;
 }
 
@@ -3043,19 +3092,9 @@ html {
   padding: 16px 0;
   outline: none;
   cursor: text;
-  transition-property: background-color, box-shadow;
+  transition-property: box-shadow;
   transition-duration: 140ms;
   transition-timing-function: ease-out;
-}
-
-.note-row.has-open-menu,
-.note-row.is-editing,
-.note-row:focus-visible {
-  background: #fff7b4;
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .note-row:hover { background: #fff7b4; }
 }
 
 .note-row:focus-visible {
@@ -3067,7 +3106,7 @@ html {
   min-width: 0;
   width: 100%;
   margin: 0;
-  padding: 0;
+  padding: calc((40px - 1.58em) / 2) 0;
   border: 0;
   background: transparent;
   color: #1e1d18;
@@ -3140,13 +3179,6 @@ html {
   place-items: center;
 }
 
-@media (hover: hover) and (pointer: fine) {
-  .note-check:hover .note-check__circle {
-    border-color: #1e1d18;
-    background: #fff7b4;
-  }
-}
-
 .note-check.is-checked .note-check__circle {
   border-color: #1e1d18;
   background: #1e1d18;
@@ -3195,9 +3227,9 @@ html {
 
 .notes-composer {
   width: min(var(--notes-column), 100%);
-  min-height: 60px;
+  min-height: 64px;
   margin: 0 auto;
-  padding: 9px 8px 9px 18px;
+  padding: 11px 8px 11px 18px;
   display: flex;
   align-items: flex-end;
   gap: 10px;
@@ -3586,10 +3618,8 @@ html {
 .calendar-connect { display: inline-block; padding: 10px 12px; border-radius: 9px; background: #1e1d18; color: white; text-decoration: none; font-weight: 700; }
 .calendar-panel .calendar-error { color: #a43b2d; margin-bottom: 0; }
 .notes-list { justify-content: flex-end; }
-.calendar-event { display: grid; grid-template-columns: 40px minmax(0, 1fr) 40px; gap: 16px; align-items: center; padding: 20px 0; color: #1e1d18; }
-.calendar-event__icon { display: grid; place-items: center; align-self: start; width: 40px; height: 40px; margin-top: -6px; color: #a66c35; }
-.calendar-event__icon .note-check__circle { border-color: transparent; }
-.calendar-event__check { cursor: default; }
+.calendar-event { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 16px; align-items: center; padding: 20px 0; color: #1e1d18; }
+.calendar-event__check { align-self: start; margin-top: -6px; cursor: default; }
 .calendar-event > div > a, .calendar-event > div > span { font-size: 18px; font-weight: 600; line-height: 1.58; overflow-wrap: anywhere; white-space: pre-wrap; text-wrap: pretty; }
 .calendar-event a { color: inherit; text-decoration: none; }
 @media (hover: hover) and (pointer: fine) { .calendar-event a:hover { text-decoration: underline; } }
@@ -3618,7 +3648,7 @@ html {
   padding: 0 4px;
   border: solid #edaa7f;
   border-width: 1px 4px 4px 1px;
-  border-radius: 18px;
+  border-radius: 15px;
   background: #fbf197;
   color: #1e1d18;
   font-size: 16px;
@@ -3693,9 +3723,8 @@ html {
 .feed-tabs--scrollable { max-height: calc(100dvh - 120px); overflow-y: auto; scrollbar-width: thin; }
 .feed-tabs .feed-tab { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-shrink: 0; }
 .feed-add-button {
-  order: -1;
   display: grid; place-items: center; width: 88px; height: 40px; flex-shrink: 0;
-  border: solid #edaa7f; border-width: 1px 4px 4px 1px; border-radius: 18px; background: #fbf197; color: #1e1d18; font-size: 16px; font-weight: 600; cursor: pointer;
+  border: solid #edaa7f; border-width: 1px 4px 4px 1px; border-radius: 15px; background: #fbf197; color: #1e1d18; font-size: 16px; font-weight: 600; cursor: pointer;
 }
 .feed-add-button:focus-visible { outline: 2px solid #1e1d18; outline-offset: 2px; }
 .feed-add { justify-content: flex-start; gap: 8px; }
@@ -3703,7 +3732,6 @@ html {
 .note-context-menu { max-height: calc(100dvh - 20px); overflow-y: auto; }
 .note-context-menu__move span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .feed-tab--input { cursor: text; outline: none; }
-.feed-tabs > .feed-tab--input { order: -1; }
 .feed-tab--input:focus-visible, .feed-popover__input:focus-visible { outline: 2px solid #1e1d18; outline-offset: 2px; }
 .feed-popover__input { display: block; width: 100%; min-height: 44px; padding: 0 12px; border: 1px solid #edaa7f; border-radius: 9px; background: #fff8c9; color: #1e1d18; font-size: 16px; }
 .feed-inline-error { max-width: 160px; margin: 0; color: #b3262e; font-size: 12px; overflow-wrap: anywhere; }
@@ -3728,20 +3756,27 @@ html {
   top: calc(111px + env(safe-area-inset-top, 0px));
   right: 89px;
   width: min(299px, calc((100vw - var(--notes-column)) / 2 - 105px));
-  max-height: calc(100dvh - 140px);
-  overflow-y: auto;
 }
 .top-three__content {
-  min-height: 224px;
-  padding: 20px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 272px;
+  padding: 24px;
   border: 2px solid #1e1d18;
   border-radius: 16px;
   background: var(--bg);
   color: #1e1d18;
 }
+.top-three__paper-clip { position: absolute; z-index: 1; top: -44.5px; left: min(165px, 63%); width: auto; height: 107.8px; pointer-events: none; }
+.top-three__paper-clip--pink { top: -32.5px; left: min(211px, 77%); height: 82px; }
+.top-three__divider { height: 4px; margin-top: 19px; overflow: hidden; }
+.top-three__divider img { display: block; max-width: none; }
+.top-three__footer { margin: 24px 0 0; color: rgba(30, 29, 24, .5); font-size: 12px; line-height: 1.1; letter-spacing: -.02em; font-variation-settings: "opsz" 32; }
 .top-three__heading h2 { margin: 0; font-size: 32px; font-weight: 600; letter-spacing: -.02em; line-height: 1; }
-.top-three__empty { margin: 16px 0 0; font-size: 14px; line-height: 1.4; color: rgba(30, 29, 24, .65); }
-.top-three__list { display: grid; gap: 12px; padding: 0; margin: 16px 0 0; list-style: none; }
+.top-three__empty { margin: 20px 0 0; font-size: 14px; line-height: 1.4; color: rgba(30, 29, 24, .65); }
+.top-three__list { display: grid; gap: 16px; max-height: min(40vh, 240px); overflow-y: auto; padding: 0; margin: 20px 0 0; list-style: none; }
 .top-three__list li { display: flex; align-items: flex-start; gap: 8px; }
 .top-three__check {
   position: relative; display: grid; place-items: center; flex: none; width: 16px; height: 16px;
@@ -3761,9 +3796,12 @@ html {
   .top-three__note:hover { text-decoration: underline; }
 }
 .top-three__mobile-trigger { display: none; }
-.top-three__popover { z-index: 25; width: min(299px, calc(100vw - 32px)); max-height: min(440px, calc(100dvh - 100px)); overflow-y: auto; border-radius: 16px; box-shadow: 0 8px 24px rgba(30, 29, 24, .12); }
+.top-three__mobile-drop-target { display: none; border-radius: 50%; }
+.top-three__mobile-drop-target[data-drop-active="true"] { outline: 2px dashed #1e1d18; outline-offset: 4px; }
+.top-three__popover { z-index: 25; width: min(299px, calc(100vw - 32px)); border-radius: 16px; box-shadow: 0 8px 24px rgba(30, 29, 24, .12); }
 @media (max-width: 1300px) {
   .top-three { display: none; }
+  .top-three__mobile-drop-target { display: block; }
   .top-three__mobile-trigger { display: grid; place-items: center; flex: none; width: 40px; height: 40px; padding: 0; border: 1.5px solid #1e1d18; border-radius: 50%; background: #ffed8c; box-shadow: 3px 2px 0 #1e1d18; color: #1e1d18; cursor: pointer; }
 }
 
@@ -3777,7 +3815,7 @@ html {
 .note-drag-handle:active { cursor: grabbing; }
 .note-drag-handle:focus-visible { outline: 2px solid #1e1d18; outline-offset: 1px; opacity: 1; }
 .note-row > .note-drag-handle { grid-column: 3; grid-row: 1; }
-.note-row > .note-check { grid-column: 1; grid-row: 1; }
+.note-row > .note-check { grid-column: 1; grid-row: 1; align-self: start; }
 .note-row > .note-row__text, .note-row > .note-row__editor { grid-column: 2; grid-row: 1; }
 .top-three__list .note-drag-handle { width: 22px; height: 24px; margin: -2px 0; }
 .top-three__list li[data-drop-active="true"] { box-shadow: inset 0 -2px #1e1d18; }
@@ -3790,7 +3828,10 @@ html {
 .feed-drop-target { width: 88px; flex-shrink: 0; border-radius: 18px; }
 .feed-drop-target[data-drop-active="true"] { outline: 2px solid #1e1d18; outline-offset: 3px; }
 .top-three__drop-target[data-drop-active="true"] .top-three__content { outline: 2px dashed #1e1d18; outline-offset: 4px; }
-.note-drag-preview { max-width: min(300px, 75vw); max-height: 100px; overflow: hidden; padding: 12px 16px; border: 1.5px solid #1e1d18; border-radius: 12px; background: #fff7b4; box-shadow: 3px 2px 0 #1e1d18; color: #1e1d18; font-size: 16px; line-height: 1.3; overflow-wrap: anywhere; pointer-events: none; }
-.note-drag-destinations { position: fixed; z-index: 35; right: 12px; bottom: calc(var(--composer-overlay-height, 70px) + 12px); left: 12px; display: flex; justify-content: center; gap: 8px; overflow-x: auto; padding: 6px; pointer-events: none; }
-.note-drag-destination { flex: none; max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 10px 14px; border: 1.5px solid #1e1d18; border-radius: 18px; background: #ffed8c; color: #1e1d18; font-size: 14px; font-weight: 700; pointer-events: auto; }
-.note-drag-destination[data-drop-active="true"] { background: #edaa7f; }
+.note-drag-preview { display: flex; align-items: center; gap: 8px; width: min(190px, 65vw); padding: 12px; border: 1.5px solid #1e1d18; border-radius: 12px; background: #fff7b4; box-shadow: 3px 2px 0 #1e1d18; color: #1e1d18; font-size: 16px; font-weight: 600; line-height: 1.3; pointer-events: none; }
+.note-drag-preview__check { display: grid; place-items: center; flex: none; width: 16px; height: 16px; border: 1px solid #1e1d18; border-radius: 50%; }
+.note-drag-preview__check.is-checked { background: #1e1d18; color: #fff7b4; }
+.note-drag-preview__text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 960px) {
+  .feed-tabs.feed-tabs--dragging-note { display: flex; left: 16px; z-index: 30; max-height: calc(100dvh - 120px); overflow-y: auto; }
+}
