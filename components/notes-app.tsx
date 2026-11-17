@@ -143,12 +143,14 @@ function resizeNoteEditor(element: HTMLTextAreaElement) {
 export function NotesApp() {
   const router = useRouter();
   const reduceMotion = useReducedMotion();
+  const [horizontalTabs, setHorizontalTabs] = useState(false);
+  const [movingTab, setMovingTab] = useState(false);
   const ideasOffset = useMotionValue(0);
   const allOffset = useMotionValue(0);
   const customOffsetsRef = useRef(new Map<string, MotionValue<number>>());
   const creatingFeedRef = useRef(false);
   const cancelFeedRef = useRef(false);
-  const tabDragRef = useRef<{ pointerId: number; feed: NoteFeed; startY: number; startOffset: number; lastY: number; lastTime: number; velocity: number; dragged: boolean } | null>(null);
+  const tabDragRef = useRef<{ pointerId: number; feed: NoteFeed; horizontal: boolean; start: number; startOffset: number; last: number; lastTime: number; velocity: number; dragged: boolean } | null>(null);
   const suppressTabClickRef = useRef<NoteFeed | null>(null);
   const [notes, setNotes] = useState<Reminder[]>([]);
   const [topThreeIds, setTopThreeIds] = useState<string[]>([]);
@@ -159,6 +161,13 @@ export function NotesApp() {
   const [reorderSaving, setReorderSaving] = useState(false);
   const dragSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }), useSensor(KeyboardSensor));
   const [activeFeed, setActiveFeed] = useState<NoteFeed>("all");
+  useEffect(() => {
+    const media = window.matchMedia("(min-width: 961px)");
+    const update = () => setHorizontalTabs(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
   const [drafts, setDrafts] = useState<Record<NoteFeed, string>>({ all: "", ideas: "" });
   const [feedMenuOpen, setFeedMenuOpen] = useState(false);
   const [customFeeds, setCustomFeeds] = useState<CustomFeed[]>([]);
@@ -428,37 +437,36 @@ export function NotesApp() {
     if (reduceMotion || event.button !== 0 || !event.isPrimary || tabDragRef.current) return;
     void unlock();
     const stack = [...allFeeds, { id: "__add__", name: "Create tab" }];
-    const index = stack.findIndex((item) => item.id === feed);
-    const neighbor = stack[index === stack.length - 1 ? index - 1 : index + 1];
-    if (!neighbor) return;
     const draggedOffset = feedOffset(feed);
-    const otherOffset = feedOffset(neighbor.id);
     draggedOffset.stop();
-    otherOffset.stop();
-    if (otherOffset.get() !== 0) animate(otherOffset, 0, { type: "spring", stiffness: 450, damping: 24 });
+    for (const item of stack) {
+      if (item.id === feed) continue;
+      const offset = feedOffset(item.id);
+      offset.stop();
+      if (offset.get() !== 0) animate(offset, 0, { type: "spring", stiffness: 450, damping: 24 });
+    }
     suppressTabClickRef.current = null;
     event.currentTarget.setPointerCapture(event.pointerId);
+    const coordinate = horizontalTabs ? event.clientX : event.clientY;
     tabDragRef.current = {
-      feed, pointerId: event.pointerId, startY: event.clientY, startOffset: draggedOffset.get(),
-      lastY: event.clientY, lastTime: event.timeStamp, velocity: 0, dragged: false
+      feed, pointerId: event.pointerId, horizontal: horizontalTabs, start: coordinate, startOffset: draggedOffset.get(),
+      last: coordinate, lastTime: event.timeStamp, velocity: 0, dragged: false
     };
   }
 
   function moveTabDrag(event: ReactPointerEvent<HTMLButtonElement>) {
     const gesture = tabDragRef.current;
     if (!gesture || gesture.pointerId !== event.pointerId) return;
-    const direction = gesture.feed === "__add__" ? 1 : -1;
-    const delta = (event.clientY - gesture.startY) * direction;
-    if (!gesture.dragged && delta <= 6) return;
+    const coordinate = gesture.horizontal ? event.clientX : event.clientY;
+    const delta = coordinate - gesture.start;
+    if (!gesture.dragged && Math.abs(delta) <= 6) return;
+    if (!gesture.dragged) setMovingTab(true);
     gesture.dragged = true;
-    const distance = Math.max(0, gesture.startOffset * direction + delta);
-    const resistedOffset = distance <= 90 ? distance : 90 + (distance - 90) * 0.25;
-    const offset = gesture.feed === "__add__" ? Math.min(96, resistedOffset) : resistedOffset;
     const elapsed = event.timeStamp - gesture.lastTime;
-    if (elapsed > 0) gesture.velocity = (event.clientY - gesture.lastY) / elapsed * 1000;
-    gesture.lastY = event.clientY;
+    if (elapsed > 0) gesture.velocity = (coordinate - gesture.last) / elapsed * 1000;
+    gesture.last = coordinate;
     gesture.lastTime = event.timeStamp;
-    feedOffset(gesture.feed).set(offset * direction);
+    feedOffset(gesture.feed).set(gesture.startOffset + delta);
   }
 
   function endTabDrag(event: ReactPointerEvent<HTMLButtonElement>, cancelled = false) {
@@ -467,17 +475,16 @@ export function NotesApp() {
     tabDragRef.current = null;
     if (!gesture.dragged) return;
     suppressTabClickRef.current = cancelled ? null : gesture.feed;
-    const direction = gesture.feed === "__add__" ? 1 : -1;
     const stack = [...allFeeds, { id: "__add__", name: "Create tab" }];
     const index = stack.findIndex((item) => item.id === gesture.feed);
-    const neighborIndex = index === stack.length - 1 ? index - 1 : index + 1;
-    const neighbor = stack[neighborIndex];
     const draggedOffset = feedOffset(gesture.feed);
-    if (!neighbor) { animate(draggedOffset, 0, { type: "spring", stiffness: 480, damping: 24 }); return; }
-    const otherOffset = feedOffset(neighbor.id);
+    const direction = Math.sign(draggedOffset.get());
+    const neighborIndex = index - direction;
+    const neighbor = stack[neighborIndex];
     const releaseVelocity = event.timeStamp - gesture.lastTime < 100 ? gesture.velocity : 0;
-    if (cancelled || draggedOffset.get() * direction < 12) {
-      animate(draggedOffset, 0, { type: "spring", stiffness: 480, damping: 24, velocity: releaseVelocity });
+    const finishDrag = () => { if (!tabDragRef.current) setMovingTab(false); };
+    if (cancelled || !neighbor || Math.abs(draggedOffset.get()) < 12) {
+      animate(draggedOffset, 0, { type: "spring", stiffness: 480, damping: 24, velocity: releaseVelocity, onComplete: finishDrag });
       return;
     }
     let collided = false;
@@ -518,7 +525,7 @@ export function NotesApp() {
         });
       }
       propagate(neighborIndex, impactVelocity * 0.95);
-      animate(draggedOffset, 0, { type: "spring", stiffness: 500, damping: 18, velocity: -impactVelocity * 0.3 });
+      animate(draggedOffset, 0, { type: "spring", stiffness: 500, damping: 18, velocity: -impactVelocity * 0.3, onComplete: finishDrag });
     }
     animate(draggedOffset, -(tabGap + 4) * direction, {
       type: "spring", stiffness: 500, damping: 30, velocity: releaseVelocity,
@@ -1222,7 +1229,7 @@ export function NotesApp() {
         </div>
       </header>
 
-      <nav className={`feed-tabs ${customFeeds.length > 7 ? "feed-tabs--scrollable" : ""} ${draggingNote ? "feed-tabs--dragging-note" : ""}`} aria-label="Feeds">
+      <nav className={`feed-tabs ${customFeeds.length > 7 ? "feed-tabs--scrollable" : ""} ${draggingNote ? "feed-tabs--dragging-note" : ""} ${movingTab ? "feed-tabs--moving-tab" : ""}`} aria-label="Feeds">
         {allFeeds.map((feed) => editingFeedId === feed.id ? <div key={feed.id}>{tabNameInput("feed-tab feed-tab--input", feed.id)}{feedError ? <span className="feed-inline-error" role="alert">{feedError}</span> : null}</div> : (
           <NoteDropTarget key={feed.id} id={feed.id} kind="feed" className="feed-drop-target">
           <motion.button
@@ -1231,7 +1238,7 @@ export function NotesApp() {
             title={feed.name}
             className={`feed-tab ${activeFeed === feed.id ? "is-active" : ""} ${!reduceMotion ? "feed-tab--draggable" : ""}`}
             aria-current={activeFeed === feed.id ? "page" : undefined}
-            style={{ y: feedOffset(feed.id) }}
+            style={horizontalTabs ? { x: feedOffset(feed.id) } : { y: feedOffset(feed.id) }}
             onContextMenu={(event) => openFeedMenu(event, feed.id)}
             onPointerDown={(event) => startTabDrag(event, feed.id)}
             onPointerMove={moveTabDrag}
@@ -1254,7 +1261,7 @@ export function NotesApp() {
         ))}
         {createFeedOpen && !feedMenuOpen ? tabNameInput("feed-tab feed-tab--input") : null}
         {feedError && !feedMenuOpen && !editingFeedId ? <span className="feed-inline-error" role="alert">{feedError}</span> : null}
-        {!createFeedOpen ? <motion.button type="button" className={`feed-add-button ${!reduceMotion ? "feed-tab--draggable" : ""}`} aria-label="Create tab" style={{ y: feedOffset("__add__") }} onPointerDown={(event) => startTabDrag(event, "__add__")} onPointerMove={moveTabDrag} onPointerUp={(event) => endTabDrag(event)} onPointerCancel={(event) => endTabDrag(event, true)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") suppressTabClickRef.current = null; }} onClick={() => { if (suppressTabClickRef.current === "__add__") { suppressTabClickRef.current = null; return; } beginCreateFeed(); }}><span aria-hidden="true">+</span></motion.button> : null}
+        {!createFeedOpen ? <motion.button type="button" className={`feed-add-button ${!reduceMotion ? "feed-tab--draggable" : ""}`} aria-label="Create tab" style={horizontalTabs ? { x: feedOffset("__add__") } : { y: feedOffset("__add__") }} onPointerDown={(event) => startTabDrag(event, "__add__")} onPointerMove={moveTabDrag} onPointerUp={(event) => endTabDrag(event)} onPointerCancel={(event) => endTabDrag(event, true)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") suppressTabClickRef.current = null; }} onClick={() => { if (suppressTabClickRef.current === "__add__") { suppressTabClickRef.current = null; return; } beginCreateFeed(); }}><span aria-hidden="true">+</span></motion.button> : null}
       </nav>
       <aside className="top-three" aria-label="Top 3 important notes"><NoteDropTarget id="desktop" kind="top-three" className="top-three__drop-target">{topThreeContent()}</NoteDropTarget></aside>
       <div className="notes-stage">
