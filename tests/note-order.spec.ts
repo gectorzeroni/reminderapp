@@ -9,7 +9,7 @@ function item(id: string, day: number): Reminder {
 }
 describe("note ordering", () => {
   it("reorders within the group and retains the timestamps", () => {
-    const notes = [item("a", 10), item("b", 11), item("c", 12)];
+    const notes = [item("a", 10), item("b", 11), item("c", 11)];
     const positions = reorderGroup(notes, "c", "a", false)!;
     const byId = new Map(positions.map((position) => [position.id, position.position]));
     const reordered = notes.map((note) => ({ ...note, sortPosition: byId.get(note.id) }));

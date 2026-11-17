@@ -1,5 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
+import "allo-font";
+import "@fontsource-variable/nunito";
+import "@fontsource-variable/nunito/wght-italic.css";
 import "@fontsource/rubik-spray-paint/index.css";
 import { AgentationOverlay } from "@/components/agentation-overlay";
 import "./globals.css";
