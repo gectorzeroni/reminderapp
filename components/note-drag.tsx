@@ -1,7 +1,7 @@
 "use client";
 
 import { useDraggable, useDroppable } from "@dnd-kit/core";
-import { GripVertical } from "lucide-react";
+import { HandleIcon } from "@/components/icons";
 import { forwardRef, type ComponentProps, type ReactNode } from "react";
 import { motion } from "motion/react";
 
@@ -9,7 +9,7 @@ export type NoteDragData = { kind: "note"; noteId: string; source: "feed" | "top
 
 export function NoteDragHandle({ noteId, source, groupKey, disabled = false }: { noteId: string; source: "feed" | "top-three"; groupKey?: string; disabled?: boolean }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: `${source}:${noteId}`, data: { kind: "note", noteId, source, groupKey } satisfies NoteDragData, disabled });
-  return <button ref={setNodeRef} type="button" className={`note-drag-handle ${isDragging ? "is-dragging" : ""}`} aria-label="Drag note" {...attributes} {...listeners} onClick={(event) => { event.preventDefault(); event.stopPropagation(); }} onPointerDown={(event) => { event.stopPropagation(); listeners?.onPointerDown?.(event); }}><GripVertical size={16} aria-hidden="true" /></button>;
+  return <button ref={setNodeRef} type="button" className={`note-drag-handle ${isDragging ? "is-dragging" : ""}`} aria-label="Drag note" {...attributes} {...listeners} onClick={(event) => { event.preventDefault(); event.stopPropagation(); }} onPointerDown={(event) => { event.stopPropagation(); listeners?.onPointerDown?.(event); }}><HandleIcon size={16} /></button>;
 }
 
 export const NoteDropRow = forwardRef<HTMLElement, ComponentProps<typeof motion.article> & { noteId: string; groupKey: string }>(function NoteDropRow({ noteId, groupKey, children, ...props }, forwardedRef) {

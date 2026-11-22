@@ -3,7 +3,7 @@
 import { play as playCue, unlock, type PlayOptions, type SoundName } from "cuelume";
 import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, closestCenter, pointerWithin, rectIntersection, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
 import { animate, AnimatePresence, motion, motionValue, useMotionValue, useReducedMotion, type MotionValue } from "motion/react";
-import { ArrowDown, ArrowRightLeft, CalendarDays, Check, ChevronDown, LogOut, Pencil, Plus, Search, Star, Trash2, X } from "lucide-react";
+import { ArrowDown, ArrowRightLeft, CalendarDays, ChevronDown, LogOut, Pencil, Plus, Star, Trash2 } from "lucide-react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { AlertDialog, Popover } from "radix-ui";
@@ -20,6 +20,7 @@ import {
 } from "react";
 import { Toaster, toast } from "sonner";
 import { NoteComposerInput } from "@/components/note-composer-input";
+import { CheckIcon as Check, CrossIcon as X, SearchIcon as Search, UpArrowIcon } from "@/components/icons";
 import { NoteDragHandle, NoteDropRow, NoteDropTarget, TopThreeDropRow, type NoteDragData } from "@/components/note-drag";
 import { NoteLinkText } from "@/components/note-link-text";
 import { parseStoredNote } from "@/lib/note";
@@ -161,6 +162,7 @@ export function NotesApp() {
   const [reorderSaving, setReorderSaving] = useState(false);
   const dragSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }), useSensor(KeyboardSensor));
   const [activeFeed, setActiveFeed] = useState<NoteFeed>("all");
+  const [uncompletedOnly, setUncompletedOnly] = useState(false);
   useEffect(() => {
     const media = window.matchMedia("(min-width: 961px)");
     const update = () => setHorizontalTabs(media.matches);
@@ -220,6 +222,7 @@ export function NotesApp() {
   const [editingNoteText, setEditingNoteText] = useState("");
   const [savingNoteIds, setSavingNoteIds] = useState<Set<string>>(() => new Set());
   const scrollRef = useRef<HTMLDivElement>(null);
+  const filterScrollFrameRef = useRef<number | null>(null);
   const composerAreaRef = useRef<HTMLElement>(null);
   const textareaRef = useRef<HTMLDivElement>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
@@ -231,6 +234,30 @@ export function NotesApp() {
   const shouldScrollToLatestRef = useRef(true);
   const scrollBehaviorRef = useRef<ScrollBehavior>("auto");
   const calendarShouldScrollRef = useRef(false);
+
+  useEffect(() => () => {
+    if (filterScrollFrameRef.current !== null) window.cancelAnimationFrame(filterScrollFrameRef.current);
+  }, []);
+
+  function toggleCompletionFilter() {
+    play("select", { theme: "mech", emphasis: "subtle", volume: 0.4 });
+    setUncompletedOnly((current) => !current);
+    setContextMenu(null);
+    if (filterScrollFrameRef.current !== null) window.cancelAnimationFrame(filterScrollFrameRef.current);
+    const start = performance.now();
+    let previousHeight = 0;
+    let stableFrames = 0;
+    const keepAtBottom = (time: number) => {
+      const scroller = scrollRef.current;
+      if (!scroller) { filterScrollFrameRef.current = null; return; }
+      scroller.scrollTop = scroller.scrollHeight;
+      stableFrames = scroller.scrollHeight === previousHeight ? stableFrames + 1 : 0;
+      previousHeight = scroller.scrollHeight;
+      if (time - start < (reduceMotion ? 50 : 300) || (stableFrames < 8 && time - start < 3000)) filterScrollFrameRef.current = window.requestAnimationFrame(keepAtBottom);
+      else filterScrollFrameRef.current = null;
+    };
+    filterScrollFrameRef.current = window.requestAnimationFrame(keepAtBottom);
+  }
 
   useEffect(() => {
     const footer = composerAreaRef.current;
@@ -286,6 +313,7 @@ export function NotesApp() {
 
   function showTopThreeNote(note: Reminder) {
     setTopThreeOpen(false);
+    if (note.checked) setUncompletedOnly(false);
     setSearchQuery("");
     setSearchOpen(false);
     selectFeed(note.feed ?? "all");
@@ -309,7 +337,7 @@ export function NotesApp() {
       <div className="top-three__heading"><h2>Top 3</h2><span className="sr-only">{topThreeIds.length} of 3 notes</span></div>
       <div className="top-three__divider" aria-hidden="true"><Image src="/top-three-divider.svg" width={257} height={4} alt="" /></div>
       {topThreeError ? <p className="top-three__empty" role="status">{topThreeError}</p> : topNotes.length === 0 ? <p className="top-three__empty">Add important notes from the note menu.</p> : <ol className="top-three__list">{topNotes.map((note) => <TopThreeDropRow key={note.id} noteId={note.id}>
-        <button type="button" className={`top-three__check ${note.checked ? "is-checked" : ""}`} aria-label={note.checked ? "Uncheck note" : "Check note"} aria-pressed={note.checked} disabled={checkingNoteIds.has(note.id)} onClick={() => void toggleNoteChecked(note)}>{note.checked ? <Check size={12} strokeWidth={2.4} aria-hidden="true" /> : null}</button>
+        <button type="button" className={`top-three__check ${note.checked ? "is-checked" : ""}`} aria-label={note.checked ? "Uncheck note" : "Check note"} aria-pressed={note.checked} disabled={checkingNoteIds.has(note.id)} onClick={() => void toggleNoteChecked(note)}>{note.checked ? <Check size={14} strokeWidth={2.4} aria-hidden="true" /> : null}</button>
         <button type="button" className="top-three__note" onClick={() => showTopThreeNote(note)}><span>{parseStoredNote(note.note).plainText || "Untitled note"}</span></button>
         <NoteDragHandle noteId={note.id} source="top-three" disabled={topThreeSaving || reorderSaving} />
         <button type="button" className="top-three__remove" aria-label={`Remove ${parseStoredNote(note.note).plainText || "note"} from Top 3`} disabled={topThreeSaving} onClick={() => void updateTopThree(note.id, true)}><X size={15} aria-hidden="true" /></button>
@@ -536,9 +564,10 @@ export function NotesApp() {
 
   const timelineGroups = useMemo(() => {
     const [year, month, day] = todayKey.split("-").map(Number);
-    const feedNotes = searching ? notes.filter((note) => noteMatchesSearch(note, searchQuery)) : notes.filter((note) => (note.feed ?? "all") === activeFeed);
+    const feedNotes = notes.filter((note) => searching ? noteMatchesSearch(note, searchQuery) : (note.feed ?? "all") === activeFeed);
     return groupNotesByPeriod(feedNotes, new Date(year, month - 1, day), !searching && activeFeed === "all" && calendarEvents.length > 0);
   }, [notes, todayKey, activeFeed, calendarEvents.length, searching, searchQuery]);
+  const noUncompletedNotes = uncompletedOnly && !timelineGroups.some((group) => group.notes.some((note) => !note.checked));
 
   useEffect(() => {
     const scroller = scrollRef.current;
@@ -998,6 +1027,7 @@ export function NotesApp() {
       return;
     }
     if (searching) { toast("Clear search to reorder notes."); return; }
+    if (uncompletedOnly) { toast("Show all notes to reorder them."); return; }
     if (source.groupKey !== target.groupKey) { toast("Notes can only be reordered within the same date group."); return; }
     const group = timelineGroups.find((item) => item.key === target.groupKey);
     if (!group) return;
@@ -1172,7 +1202,7 @@ export function NotesApp() {
             <Popover.Root open={feedMenuOpen} onOpenChange={(open) => { if (!open && createFeedOpen) void saveNewFeed(newFeedName); setFeedMenuOpen(open); }}>
               <Popover.Trigger asChild>
                 <button type="button" className="feed-mobile-trigger" aria-label="Choose feed">
-                  {activeFeedName}<ChevronDown size={16} aria-hidden="true" />
+                  <span className="feed-mobile-trigger__label">{activeFeedName}</span><ChevronDown size={16} aria-hidden="true" />
                 </button>
               </Popover.Trigger>
               <Popover.Portal>
@@ -1185,13 +1215,14 @@ export function NotesApp() {
             </Popover.Root>
           </div>
           <div className="notes-header__actions">
+            <button type="button" className={`completion-filter ${uncompletedOnly ? "is-active" : ""}`} aria-label="Show uncompleted tasks only" aria-pressed={uncompletedOnly} title={uncompletedOnly ? "Showing uncompleted tasks" : "Showing all notes"} onClick={toggleCompletionFilter}><span className="completion-filter__icon"><Check size={16} strokeWidth={2.5} aria-hidden="true" /></span></button>
             <Popover.Root open={topThreeOpen} onOpenChange={setTopThreeOpen}>
               <NoteDropTarget id="mobile" kind="top-three" className="top-three__mobile-drop-target"><Popover.Trigger asChild><button type="button" className="top-three__mobile-trigger" aria-label="Open Top 3"><Star size={18} aria-hidden="true" /></button></Popover.Trigger></NoteDropTarget>
               <Popover.Portal><Popover.Content className="top-three__popover" align="end" sideOffset={48} collisionPadding={16} aria-label="Top 3 important notes">{topThreeContent()}</Popover.Content></Popover.Portal>
             </Popover.Root>
             <div className={`notes-search ${searchOpen ? "is-open" : ""}`} role="search">
               <div className="notes-search__surface" aria-hidden="true" />
-              <button ref={searchTriggerRef} type="button" className="notes-search-trigger" aria-label="Search notes" aria-expanded={searchOpen} aria-controls="notes-search-input" onClick={() => { play("select", { theme: "mech", emphasis: "subtle", volume: 0.4 }); setSearchOpen(true); searchInputRef.current?.focus(); }}><Search size={16} aria-hidden="true" /></button>
+              <button ref={searchTriggerRef} type="button" className="notes-search-trigger" aria-label="Search notes" aria-expanded={searchOpen} aria-controls="notes-search-input" onClick={() => { play("select", { theme: "mech", emphasis: "subtle", volume: 0.4 }); setSearchOpen(true); searchInputRef.current?.focus(); }}><Search size={20} aria-hidden="true" /></button>
               <input ref={searchInputRef} id="notes-search-input" type="search" aria-label="Search notes" placeholder="Search notes or date" disabled={!searchOpen} value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") closeSearch(); }} />
               <button type="button" className="notes-search__close" aria-label="Close search" tabIndex={searchOpen ? 0 : -1} disabled={!searchOpen} onClick={closeSearch}><X size={16} aria-hidden="true" /></button>
             </div>
@@ -1265,8 +1296,9 @@ export function NotesApp() {
       </nav>
       <aside className="top-three" aria-label="Top 3 important notes"><NoteDropTarget id="desktop" kind="top-three" className="top-three__drop-target">{topThreeContent()}</NoteDropTarget></aside>
       <div className="notes-stage">
-        <section
+        <motion.section
           ref={scrollRef}
+          layoutScroll
           className="notes-scroll"
           aria-label={activeFeed === "all" ? "All notes" : activeFeedName}
           aria-busy={loading}
@@ -1284,7 +1316,6 @@ export function NotesApp() {
             animate={{ opacity: 1 }}
             transition={{ duration: 0.18, ease: [0.23, 1, 0.32, 1] }}
           >
-            <AnimatePresence initial={false} mode="popLayout">
               {loading ? (
                 <motion.div key="loading" layout="position" className="notes-state" role="status">
                   <span className="notes-state__pulse" aria-hidden="true" />
@@ -1293,29 +1324,26 @@ export function NotesApp() {
               ) : searching && timelineGroups.length === 0 ? (
                 <motion.div key="no-results" className="notes-state notes-state--empty" role="status"><p>No notes found</p><span>Try a different keyword or date.</span></motion.div>
               ) : (
-                timelineGroups.map((group) => (
-                  <motion.section
+                <>
+                {timelineGroups.map((group) => (
+                  <section
                     key={group.key}
                     id={`period-${group.key}`}
                     data-period-key={group.key}
-                    layout="position"
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -8, transition: { duration: 0.14, ease: "easeIn" } }}
-                    transition={{ type: "spring", duration: 0.3, bounce: 0 }}
-                    className="notes-week"
+                    className={`notes-week ${uncompletedOnly && !group.notes.some((note) => !note.checked) ? "notes-week--filtered" : ""}`}
+                    aria-hidden={uncompletedOnly && !group.notes.some((note) => !note.checked) || undefined}
+                    inert={uncompletedOnly && !group.notes.some((note) => !note.checked) || undefined}
                     aria-labelledby={`period-label-${group.key}`}
                   >
+                    <motion.div className="notes-week__heading-wrap" initial={false} animate={{ height: uncompletedOnly && !group.notes.some((note) => !note.checked) ? 0 : "auto", opacity: uncompletedOnly && !group.notes.some((note) => !note.checked) ? 0 : 1 }} transition={{ duration: reduceMotion ? 0 : 0.3, ease: [0.32, 0.72, 0, 1] }}>
                     {group.key === "today" ? (
                       <span className="sr-only" id={`period-label-${group.key}`}>{group.label}</span>
                     ) : (
                       <div className="notes-week__heading"><h2 id={`period-label-${group.key}`}>{group.label}</h2></div>
                     )}
-                    <motion.div
-                      layout="position"
-                      className="notes-week__items"
-                      transition={{ type: "spring", duration: 0.3, bounce: 0 }}
-                    >
-                      {group.key === "today" ? <TodayEvents events={!searching && activeFeed === "all" ? calendarEvents : []} /> : null}
+                    </motion.div>
+                    <div className="notes-week__items">
+                      {group.key === "today" ? <TodayEvents events={!uncompletedOnly && !searching && activeFeed === "all" ? calendarEvents : []} /> : null}
                       <AnimatePresence initial={false} mode="popLayout">
                         {group.notes.map((note) => {
                           const text = parseStoredNote(note.note).plainText;
@@ -1325,15 +1353,15 @@ export function NotesApp() {
                           const isChecked = note.checked;
                           const isChecking = checkingNoteIds.has(note.id);
                           return (
+                            <motion.div key={noteRenderKeysRef.current.get(note.id) ?? note.id} className="note-row-slot" initial={false} animate={{ height: uncompletedOnly && isChecked ? 0 : "auto" }} transition={{ duration: reduceMotion ? 0 : 0.3, ease: [0.32, 0.72, 0, 1] }} aria-hidden={uncompletedOnly && isChecked || undefined} inert={uncompletedOnly && isChecked || undefined}>
                             <NoteDropRow
-                              key={noteRenderKeysRef.current.get(note.id) ?? note.id}
                               noteId={note.id}
                               groupKey={group.key}
                               data-note-id={note.id}
-                              layout
-                              animate={{ opacity: 1, y: 0 }}
-                              exit={{ opacity: 0, y: -8, transition: { duration: 0.14, ease: "easeIn" } }}
-                              transition={{ type: "spring", duration: 0.3, bounce: 0 }}
+                              initial={false}
+                              animate={uncompletedOnly && isChecked ? { opacity: 0, y: reduceMotion ? 0 : 12 } : { opacity: 1, y: 0 }}
+                              exit={{ opacity: 0 }}
+                              transition={{ duration: reduceMotion ? 0 : 0.3, ease: [0.32, 0.72, 0, 1] }}
                               className={`note-row ${isEditing ? "is-editing" : ""} ${contextMenu?.noteId === note.id ? "has-open-menu" : ""}`}
                               tabIndex={isSaving || isEditing ? -1 : 0}
                               aria-label={isSaving || isSavingEdit ? "Saving note" : undefined}
@@ -1433,16 +1461,18 @@ export function NotesApp() {
                               <NoteDragHandle noteId={note.id} source="feed" groupKey={group.key} disabled={isSaving || isSavingEdit || isEditing || reorderSaving} />
                               <span className="sr-only">Right-click or press and hold for note actions.</span>
                             </NoteDropRow>
+                            </motion.div>
                           );
                         })}
                       </AnimatePresence>
-                    </motion.div>
-                  </motion.section>
-                ))
+                    </div>
+                  </section>
+                ))}
+                {noUncompletedNotes ? <motion.div key="no-uncompleted" className="notes-state notes-state--empty" role="status"><p>No uncompleted tasks</p><span>Show all notes to see completed tasks.</span></motion.div> : null}
+                </>
               )}
-            </AnimatePresence>
           </motion.div>
-        </section>
+        </motion.section>
         <AnimatePresence initial={false}>
           {showScrollToBottom ? (
             <motion.button
@@ -1549,7 +1579,7 @@ export function NotesApp() {
                   exit={{ opacity: 0, transform: reduceMotion ? "none" : "scale(0.95)" }}
                   transition={{ duration: 0.15, ease: [0.23, 1, 0.32, 1] }}
                 >
-                  <Image src="/figma-arrow-up.svg" alt="" width={24} height={24} />
+                  <UpArrowIcon size={24} />
                 </motion.button>
               ) : null}
             </AnimatePresence>
