@@ -1,4 +1,6 @@
 import { cookies, headers } from "next/headers";
+import { createClient } from "@supabase/supabase-js";
+import { env } from "@/lib/env";
 import { DEMO_USER_ID } from "@/lib/constants";
 import { hasSupabasePublicEnv } from "@/lib/env";
 import { getSupabaseServerAuthClient } from "@/lib/supabase/server";
@@ -21,6 +23,17 @@ export async function getLocalDemoUserId(): Promise<string | null> {
 }
 
 export async function getCurrentUserId(): Promise<string> {
+  // Native clients authenticate with the same Supabase access token. Never
+  // fall back to a cookie or demo identity when an invalid bearer is sent.
+  const authorization = (await headers()).get("authorization");
+  if (authorization) {
+    const match = /^Bearer ([^\s]+)$/i.exec(authorization);
+    if (!match || !env.supabaseUrl || !env.supabaseAnonKey) throw new Error("Unauthorized");
+    const client = createClient(env.supabaseUrl, env.supabaseAnonKey, { auth: { persistSession: false, autoRefreshToken: false } });
+    const { data, error } = await client.auth.getUser(match[1]);
+    if (error || !data.user?.id) throw new Error("Unauthorized");
+    return data.user.id;
+  }
   const supabase = await getSupabaseServerAuthClient();
   if (supabase) {
     const { data } = await supabase.auth.getUser();
